@@ -73,17 +73,27 @@ export const LatencyAnalysisView: React.FC<LatencyAnalysisViewProps> = ({
                 {bandwidthSigmaSec.toFixed(1)}s
               </strong>
             </label>
-            <input
-              id="sigma-bandwidth-slider"
-              type="range"
-              min="1.0"
-              max="15.0"
-              step="0.5"
-              value={bandwidthSigmaSec}
-              onChange={(e) =>
-                onChangeBandwidthSigma(parseFloat(e.target.value))
+            <div
+              className="range-control"
+              style={
+                {
+                  "--range-progress": `${((bandwidthSigmaSec - 1) / 14) * 100}%`,
+                } as React.CSSProperties
               }
-            />
+            >
+              <input
+                id="sigma-bandwidth-slider"
+                className="model-range"
+                type="range"
+                min="1.0"
+                max="15.0"
+                step="0.5"
+                value={bandwidthSigmaSec}
+                onChange={(e) =>
+                  onChangeBandwidthSigma(parseFloat(e.target.value))
+                }
+              />
+            </div>
             <p>
               Adjust the time window used to correlate OSINT events with ledger
               activity.
@@ -96,17 +106,27 @@ export const LatencyAnalysisView: React.FC<LatencyAnalysisViewProps> = ({
                 {(mixerEntropyWeight * 100).toFixed(0)}%
               </strong>
             </label>
-            <input
-              id="entropy-weight-slider"
-              type="range"
-              min="0.05"
-              max="0.85"
-              step="0.05"
-              value={mixerEntropyWeight}
-              onChange={(e) =>
-                onChangeMixerEntropyWeight(parseFloat(e.target.value))
+            <div
+              className="range-control"
+              style={
+                {
+                  "--range-progress": `${((mixerEntropyWeight - 0.05) / 0.8) * 100}%`,
+                } as React.CSSProperties
               }
-            />
+            >
+              <input
+                id="entropy-weight-slider"
+                className="model-range"
+                type="range"
+                min="0.05"
+                max="0.85"
+                step="0.05"
+                value={mixerEntropyWeight}
+                onChange={(e) =>
+                  onChangeMixerEntropyWeight(parseFloat(e.target.value))
+                }
+              />
+            </div>
             <p>
               Control the influence of mixer branching entropy on attribution.
             </p>
@@ -142,7 +162,7 @@ export const LatencyAnalysisView: React.FC<LatencyAnalysisViewProps> = ({
                 <th className="py-3 px-3 text-right">Temporal Score</th>
                 <th className="py-3 px-3 text-right">Behavioral Cosine</th>
                 <th className="py-3 px-3 text-right">Graph Affinity</th>
-                <th className="py-3 px-4 text-right">Posterior P(I|W)</th>
+                <th className="py-3 px-4 text-right">Model score</th>
                 <th className="py-3 px-4 text-right">Interception Action</th>
               </tr>
             </thead>
@@ -400,8 +420,12 @@ export const LatencyAnalysisView: React.FC<LatencyAnalysisViewProps> = ({
               <table className="w-full text-left border-collapse text-xs font-mono tabular-nums">
                 <thead>
                   <tr className="border-b border-outline text-slate-400">
-                    <th className="py-2 pr-3">OSINT Event (t_osint)</th>
-                    <th className="py-2 px-3">Matched Ledger Tx (t_tx)</th>
+                    <th className="py-2 pr-3 timestamp-osint-header">
+                      OSINT Event (t_osint)
+                    </th>
+                    <th className="py-2 px-3 timestamp-ledger-header">
+                      Matched Ledger Tx (t_tx)
+                    </th>
                     <th className="py-2 px-3 text-right">Latency Δt</th>
                     <th className="py-2 pl-3 text-right">Shared Fingerprint</th>
                   </tr>

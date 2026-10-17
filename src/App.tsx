@@ -14,6 +14,8 @@ import { OsintScraperPanel } from "./components/OsintScraperPanel";
 import { LatencyAnalysisView } from "./components/LatencyAnalysisView";
 import { FreezeWarrantsView } from "./components/FreezeWarrantsView";
 import { CaseOverview } from "./components/CaseOverview";
+import { AlertsPanel } from "./components/AlertsPanel";
+import { AnalystCopilot } from "./components/AnalystCopilot";
 import {
   Activity,
   ArrowDownToLine,
@@ -261,7 +263,54 @@ export default function App() {
     );
   };
 
-  // Handler: Export Forensic Dossier JSON
+  // Alert system state
+  const [alerts, setAlerts] = useState<any[]>([]);
+  const [alertThreshold, setAlertThreshold] = useState<number>(1_000_000);
+  const [clusterHeatmap, setClusterHeatmap] = useState<Record<string, number>>({});
+  const [warRoomKpis, setWarRoomKpis] = useState<any>(null);
+
+  useEffect(() => {
+    const fetchAlertsAndHeatmap = async () => {
+      try {
+        const [alertsRes, heatmapRes, kpiRes] = await Promise.all([
+          fetch("/alerts"),
+          fetch("/heatmap"),
+          fetch("/war-room/kpis")
+        ]);
+        const alertsData = await alertsRes.json();
+        const heatmapData = await heatmapRes.json();
+        const kpiData = await kpiRes.json();
+        setAlerts(alertsData);
+        setClusterHeatmap(heatmapData);
+        setWarRoomKpis(kpiData);
+      } catch (e) {
+        console.error("Failed to fetch alert data", e);
+      }
+    };
+
+    fetchAlertsAndHeatmap();
+    const interval = setInterval(fetchAlertsAndHeatmap, 30000); // Poll every 30s
+    return () => clearInterval(interval);
+  }, []);
+
+  const handleUpdateThreshold = async (val: number) => {
+    try {
+      await fetch("/alerts/settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ threshold: val }),
+      });
+      setAlertThreshold(val);
+      // Refresh alerts after updating threshold
+      const res = await fetch("/alerts");
+      const data = await res.json();
+      setAlerts(data);
+      setStatusBanner(`Alert threshold updated to $${val.toLocaleString()}.`);
+    } catch (e) {
+      setStatusBanner("Failed to update alert settings.");
+    }
+  };
+
   const handleExportDossier = () => {
     const payload = {
       incident: "Tuesday 02:14 UTC DeFi Protocol Exploit ($42,000,000)",
@@ -277,11 +326,11 @@ export default function App() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = "quantitative-osint-forensic-dossier.json";
+    a.download = "aethertrace-forensic-dossier.json";
     a.click();
     URL.revokeObjectURL(url);
     setStatusBanner(
-      "Exported cryptographic attribution dossier (quantitative-osint-forensic-dossier.json).",
+      "Exported cryptographic attribution dossier (aethertrace-forensic-dossier.json)."
     );
   };
 
@@ -467,28 +516,50 @@ export default function App() {
             hidden={activeSection !== "overview"}
             aria-label="Case overview"
           >
-            <CaseOverview
-              correlations={correlations}
-              artifacts={artifacts}
-              warrants={warrants}
-              bandwidthSigmaSec={bandwidthSigmaSec}
-              totalFrozenUsd={totalFrozenUsd}
-              frozenWalletIds={frozenWalletIds}
-              onIssueFreeze={handleIssueFreeze}
-            />
+            <div className="flex gap-4 h-full">
+              <div className="flex-1">
+                <CaseOverview
+                  correlations={correlations}
+                  artifacts={artifacts}
+                  warrants={warrants}
+                  bandwidthSigmaSec={bandwidthSigmaSec}
+                  totalFrozenUsd={totalFrozenUsd}
+                  frozenWalletIds={frozenWalletIds}
+                  onIssueFreeze={handleIssueFreeze}
+                  warRoomKpis={warRoomKpis}
+                />
+              </div >
+              <div className="w-96 shrink-0">
+                <AnalystCopilot
+                  suspectId={selectedNodeId}
+                />
+              </div >
+            </div >
           </section>
           <section
             hidden={activeSection !== "matrix"}
             aria-label="Forensic matrix"
           >
-            <MatrixGraphCanvas
-              nodes={nodes}
-              edges={edges}
-              selectedNodeId={selectedNodeId}
-              onSelectNode={setSelectedNodeId}
-              frozenWalletIds={frozenWalletIds}
-              onIssueFreeze={handleIssueFreeze}
-            />
+            <div className="flex gap-4 h-full">
+              <div className="flex-1 relative">
+                <MatrixGraphCanvas
+                  nodes={nodes}
+                  edges={edges}
+                  selectedNodeId={selectedNodeId}
+                  onSelectNode={setSelectedNodeId}
+                  frozenWalletIds={frozenWalletIds}
+                  onIssueFreeze={handleIssueFreeze}
+                  clusterHeatmap={clusterHeatmap}
+                />
+              </div >
+              <div className="w-80 shrink-0">
+                <AlertsPanel
+                  alerts={alerts}
+                  currentThreshold={alertThreshold}
+                  onUpdateThreshold={handleUpdateThreshold}
+                />
+              </div >
+            </div >
           </section>
           <section
             hidden={activeSection !== "osint"}

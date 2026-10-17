@@ -129,7 +129,9 @@ export const OsintScraperPanel: React.FC<OsintScraperPanelProps> = ({
     <div>
       <div className="osint-header">
         <div>
-          <h2>Threat feed &amp; repository scraper</h2>
+          <h2 className="domain-heading domain-heading-osint">
+            Threat feed &amp; repository scraper
+          </h2>
           <p>
             {artifacts.length} indexed artifacts · Automated regex &amp;
             heuristic marker extraction
@@ -371,11 +373,27 @@ export const OsintScraperPanel: React.FC<OsintScraperPanelProps> = ({
                   <dl className="artifact-markers">
                     <div>
                       <dt>Extracted IPs</dt>
-                      <dd>{art.extractedIps.join(", ") || "None"}</dd>
+                      <dd className="marker-tags">
+                        {art.extractedIps.length > 0
+                          ? art.extractedIps.map((ip) => (
+                              <code className="marker-tag" key={ip}>
+                                {ip}
+                              </code>
+                            ))
+                          : "None"}
+                      </dd>
                     </div>
                     <div>
                       <dt>Wallet addresses</dt>
-                      <dd>{art.extractedWallets.join(", ") || "None"}</dd>
+                      <dd className="marker-tags">
+                        {art.extractedWallets.length > 0
+                          ? art.extractedWallets.map((wallet) => (
+                              <code className="marker-tag" key={wallet}>
+                                {wallet}
+                              </code>
+                            ))
+                          : "None"}
+                      </dd>
                     </div>
                     {art.extractedGasQuirk !== undefined && (
                       <div>

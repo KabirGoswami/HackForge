@@ -53,6 +53,8 @@
     --success: #8be3bd;
     --warning: #f2c581;
     --graph-edge: #9380a8;
+    --osint-mark: #D5AD73;
+    --ledger-mark: #78B5D2;
   }
   * {
     box-sizing: border-box;
@@ -140,7 +142,8 @@
 }
 
 /* Each investigation tool has a small, consistent color cue. */
-[data-workspace="overview"] {
+[data-workspace="overview"],
+[data-workspace="bridge"] {
   --workspace-accent: #c7a4ff;
 }
 [data-workspace="matrix"] {

@@ -6,6 +6,9 @@ import {
   Radar,
   ShieldAlert,
   UserRound,
+  Database,
+  Fingerprint,
+  Target,
 } from "lucide-react";
 import {
   CorrelationBreakdown,
@@ -21,6 +24,12 @@ interface CaseOverviewProps {
   totalFrozenUsd: number;
   frozenWalletIds: string[];
   onIssueFreeze: (id: string) => void;
+  warRoomKpis?: {
+    total_tainted: number;
+    detected_hubs: number;
+    high_conf_suspects: number;
+    gas_funder: string;
+  };
 }
 
 export function CaseOverview({
@@ -31,6 +40,7 @@ export function CaseOverview({
   totalFrozenUsd,
   frozenWalletIds,
   onIssueFreeze,
+  warRoomKpis,
 }: CaseOverviewProps) {
   const top = correlations[0];
   return (
@@ -51,63 +61,52 @@ export function CaseOverview({
       <div className="metric-strip">
         <div className="metric metric-loss">
           <div className="metric-label">
-            <Network size={15} />
-            Drained protocol assets (02:14 UTC)
+            <Database size={15} />
+            Tainted Entities
           </div>
-          <strong className="metric-value">$42,000,000</strong>
-          <p>
-            Origin: <code>0x7a1b...4f92</code>
-          </p>
-          <p>1,597 micro-splits</p>
+          <strong className="metric-value">
+            {warRoomKpis?.total_tainted ?? "1,597"}
+          </strong>
+          <p>Total traceable addresses</p>
+          <p>Including 1,597 micro-splits</p>
         </div>
         <div className="metric">
           <div className="metric-label">
-            <UserRound size={15} />
-            Primary attributed threat actor
+            <Target size={15} />
+            Detected Hubs
+          </div>
+          <strong className="metric-value">
+            {warRoomKpis?.detected_hubs ?? "12"}
+          </strong>
+          <p>Consolidation points</p>
+          <p>High-volume transit nodes</p>
+        </div>
+        <div className="metric">
+          <div className="metric-label">
+            <Fingerprint size={15} />
+            High-Conf Suspects
           </div>
           <strong className="metric-value metric-actor">
-            {top.suspectHandle}
+            {warRoomKpis?.high_conf_suspects ?? "3"}
           </strong>
           <p>
             <span className="confidence-value">
               {top.posteriorProbability.toFixed(1)}%
             </span>{" "}
-            posterior confidence
+            max posterior
           </p>
-          <p>
-            IP: <code>185.220.101.44</code> · Fee: <code>3.14159 gwei</code>
-          </p>
-        </div>
-        <div className="metric">
-          <div className="metric-label">
-            <Activity size={15} />
-            OSINT-to-chain mean time-delta (Δt)
-          </div>
-          <strong className="metric-value text-accent">
-            {top.meanTimeDeltaSec.toFixed(2)}
-            <small>s latency</small>
-          </strong>
-          <p>{artifacts.length} correlated leaks</p>
-          <p>
-            σ = <code>{bandwidthSigmaSec.toFixed(1)}s</code> kernel
-          </p>
+          <p>Identity mapping verified</p>
         </div>
         <div className="metric">
           <div className="metric-label">
             <LockKeyhole size={15} />
-            Offshore fiat exit interception
+            Gas Funder
           </div>
           <strong className="metric-value text-success">
-            ${(totalFrozenUsd / 1_000_000).toFixed(2)}
-            <small>M frozen</small>
+            {warRoomKpis?.gas_funder ?? "Identified"}
           </strong>
-          <p>
-            {warrants.length} enforced{" "}
-            {warrants.length === 1 ? "warrant" : "warrants"}
-          </p>
-          <p>
-            Target: <code>0x99e4...c108</code>
-          </p>
+          <p>Seed capital source</p>
+          <p>Verified origin address</p>
         </div>
       </div>
 

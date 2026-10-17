@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useId, useState } from "react";
 import {
   WalletNode,
   LedgerEdge,
@@ -13,6 +13,9 @@ interface MatrixGraphCanvasProps {
   onSelectNode: (id: string) => void;
   frozenWalletIds: string[];
   onIssueFreeze: (walletId: string) => void;
+  compact?: boolean;
+  highlightedWalletIds?: string[];
+  clusterHeatmap?: Record<string, number>;
 }
 
 const ROLE_LABELS: Record<WalletNode["role"], string> = {
@@ -40,10 +43,23 @@ export const MatrixGraphCanvas: React.FC<MatrixGraphCanvasProps> = ({
   onSelectNode,
   frozenWalletIds,
   onIssueFreeze,
+  compact = false,
+  highlightedWalletIds = [],
 }) => {
   const [mode, setMode] = useState<"graph" | "matrix_vol" | "matrix_prob">(
     "graph",
   );
+  const [matrixCrosshair, setMatrixCrosshair] = useState<{
+    row: number | null;
+    column: number | null;
+  } | null>(null);
+  const instanceId = useId().replace(/:/g, "");
+  const visualizationId = `${instanceId}-ledger-visualization`;
+  const activeMarkerId = `${instanceId}-arrow-active`;
+  const mutedMarkerId = `${instanceId}-arrow-muted`;
+  const gridId = `${instanceId}-forensic-grid`;
+  const activeMode = compact ? "graph" : mode;
+  const highlightedIds = new Set([selectedNodeId, ...highlightedWalletIds]);
   const { volumeMatrix, transitionMatrix, nodeEntropies } =
     buildAdjacencyMatrix(nodes, edges);
 
@@ -57,11 +73,15 @@ export const MatrixGraphCanvas: React.FC<MatrixGraphCanvasProps> = ({
   );
 
   return (
-    <div className="panel flex flex-col">
+    <div
+      className={`panel matrix-canvas flex flex-col${compact ? " matrix-canvas-compact" : ""}`}
+      data-compact={compact}
+    >
       {/* Section Header & Segmented View Switcher */}
+      {!compact && (
       <div className="matrix-header">
         <div>
-          <h2 className="text-base font-semibold text-slate-100">
+          <h2 className="domain-heading domain-heading-ledger text-base font-semibold text-slate-100">
             Ledger tensor &amp; directed flow topology
           </h2>
           <p className="text-xs text-slate-400 mt-0.5">
@@ -101,8 +121,8 @@ export const MatrixGraphCanvas: React.FC<MatrixGraphCanvasProps> = ({
           <button
             type="button"
             role="tab"
-            id="tab-graph"
-            aria-controls="ledger-visualization"
+            id={`${instanceId}-tab-graph`}
+            aria-controls={visualizationId}
             tabIndex={mode === "graph" ? 0 : -1}
             aria-selected={mode === "graph"}
             onClick={() => setMode("graph")}
@@ -118,8 +138,8 @@ export const MatrixGraphCanvas: React.FC<MatrixGraphCanvasProps> = ({
           <button
             type="button"
             role="tab"
-            id="tab-matrix_vol"
-            aria-controls="ledger-visualization"
+            id={`${instanceId}-tab-matrix_vol`}
+            aria-controls={visualizationId}
             tabIndex={mode === "matrix_vol" ? 0 : -1}
             aria-selected={mode === "matrix_vol"}
             onClick={() => setMode("matrix_vol")}
@@ -135,8 +155,8 @@ export const MatrixGraphCanvas: React.FC<MatrixGraphCanvasProps> = ({
           <button
             type="button"
             role="tab"
-            id="tab-matrix_prob"
-            aria-controls="ledger-visualization"
+            id={`${instanceId}-tab-matrix_prob`}
+            aria-controls={visualizationId}
             tabIndex={mode === "matrix_prob" ? 0 : -1}
             aria-selected={mode === "matrix_prob"}
             onClick={() => setMode("matrix_prob")}
@@ -151,19 +171,21 @@ export const MatrixGraphCanvas: React.FC<MatrixGraphCanvasProps> = ({
           </button>
         </div>
       </div>
+      )}
 
       {/* Main Visualization Viewport */}
       <div
-        id="ledger-visualization"
-        role="tabpanel"
-        aria-labelledby={`tab-${mode}`}
+        id={visualizationId}
+        role={compact ? "region" : "tabpanel"}
+        aria-labelledby={compact ? undefined : `${instanceId}-tab-${mode}`}
+        aria-label={compact ? "Correlated wallet transaction graph" : undefined}
         tabIndex={0}
       >
-        {mode === "graph" ? (
+        {activeMode === "graph" ? (
           <div className="relative bg-canvas border-b border-outline">
             <div className="graph-scroll">
               <svg
-                viewBox="0 0 1000 490"
+                viewBox={compact ? "14 88 972 390" : "0 0 1000 490"}
                 className="select-none"
                 role="img"
                 aria-label="Directed Blockchain Transaction Graph showing $42M flow from Exploit Origin through Peel-Chain Bots and Mixers to Offshore Exchanges"
@@ -171,7 +193,7 @@ export const MatrixGraphCanvas: React.FC<MatrixGraphCanvasProps> = ({
               >
                 <defs>
                   <marker
-                    id="arrow-active"
+                    id={activeMarkerId}
                     viewBox="0 0 10 10"
                     refX="8"
                     refY="5"
@@ -182,7 +204,7 @@ export const MatrixGraphCanvas: React.FC<MatrixGraphCanvasProps> = ({
                     <path d="M 0 1 L 10 5 L 0 9 z" fill="var(--accent)" />
                   </marker>
                   <marker
-                    id="arrow-muted"
+                    id={mutedMarkerId}
                     viewBox="0 0 10 10"
                     refX="8"
                     refY="5"
@@ -193,7 +215,7 @@ export const MatrixGraphCanvas: React.FC<MatrixGraphCanvasProps> = ({
                     <path d="M 0 1 L 10 5 L 0 9 z" fill="var(--muted)" />
                   </marker>
                   <pattern
-                    id="forensic-grid"
+                    id={gridId}
                     width="40"
                     height="40"
                     patternUnits="userSpaceOnUse"
@@ -207,10 +229,10 @@ export const MatrixGraphCanvas: React.FC<MatrixGraphCanvasProps> = ({
                   </pattern>
                 </defs>
 
-                <rect width="1000" height="490" fill="url(#forensic-grid)" />
+                <rect width="1000" height="490" fill={`url(#${gridId})`} />
 
                 {/* Column Stage Guides - Non-overlapping */}
-                <g className="text-[10.5px] fill-slate-400 font-mono">
+                {!compact && <g className="text-[10.5px] fill-slate-400 font-mono">
                   <text x="90" y="26" textAnchor="middle">
                     0: DRAINER (T+3m)
                   </text>
@@ -226,7 +248,7 @@ export const MatrixGraphCanvas: React.FC<MatrixGraphCanvasProps> = ({
                   <text x="920" y="26" textAnchor="middle">
                     4: FIAT EXIT (T+5.5h)
                   </text>
-                </g>
+                </g>}
 
                 {/* Directed Flow Edges */}
                 {edges.map((edge) => {
@@ -235,7 +257,9 @@ export const MatrixGraphCanvas: React.FC<MatrixGraphCanvasProps> = ({
                   if (!src || !dst) return null;
 
                   const isHighlighted =
-                    src.id === selectedNodeId || dst.id === selectedNodeId;
+                    compact
+                      ? highlightedIds.has(src.id) && highlightedIds.has(dst.id)
+                      : src.id === selectedNodeId || dst.id === selectedNodeId;
                   const strokeWidth = Math.max(
                     1.5,
                     Math.min(6.5, edge.amountUsd / 4_500_000),
@@ -244,7 +268,12 @@ export const MatrixGraphCanvas: React.FC<MatrixGraphCanvasProps> = ({
                   const midY = (src.y + dst.y) / 2;
 
                   return (
-                    <g key={edge.id}>
+                    <g
+                      key={edge.id}
+                      className={`wallet-path${isHighlighted ? " is-highlighted" : ""}`}
+                      data-edge-id={edge.id}
+                      data-highlighted={isHighlighted}
+                    >
                       <path
                         d={`M ${src.x + 56} ${src.y} C ${midX} ${src.y}, ${midX} ${dst.y}, ${dst.x - 58} ${dst.y}`}
                         fill="none"
@@ -252,11 +281,11 @@ export const MatrixGraphCanvas: React.FC<MatrixGraphCanvasProps> = ({
                           isHighlighted ? "var(--accent)" : "var(--graph-edge)"
                         }
                         strokeWidth={strokeWidth}
-                        strokeOpacity={isHighlighted ? 0.95 : 0.55}
+                        strokeOpacity={isHighlighted ? 0.95 : compact ? 0.3 : 0.55}
                         markerEnd={
                           isHighlighted
-                            ? "url(#arrow-active)"
-                            : "url(#arrow-muted)"
+                            ? `url(#${activeMarkerId})`
+                            : `url(#${mutedMarkerId})`
                         }
                       />
                       <rect
@@ -272,12 +301,14 @@ export const MatrixGraphCanvas: React.FC<MatrixGraphCanvasProps> = ({
                             : "var(--border)"
                         }
                         strokeWidth="1"
+                        opacity={compact && !isHighlighted ? 0.6 : 1}
                       />
                       <text
                         x={midX}
                         y={midY + 3}
                         textAnchor="middle"
                         className="text-[10px] font-mono fill-slate-300"
+                        opacity={compact && !isHighlighted ? 0.6 : 1}
                       >
                         ${(edge.amountUsd / 1_000_000).toFixed(2)}M
                       </text>
@@ -288,10 +319,11 @@ export const MatrixGraphCanvas: React.FC<MatrixGraphCanvasProps> = ({
                 {/* Wallet Cluster Nodes */}
                 {nodes.map((node, idx) => {
                   const isSelected = node.id === selectedNodeId;
+                  const isHighlighted = highlightedIds.has(node.id);
                   const nodeFrozen = frozenWalletIds.includes(node.id);
                   const strokeColor = nodeFrozen
                     ? "var(--danger)"
-                    : isSelected
+                    : isHighlighted
                       ? "var(--accent)"
                       : ROLE_STROKE[node.role];
 
@@ -300,9 +332,12 @@ export const MatrixGraphCanvas: React.FC<MatrixGraphCanvasProps> = ({
                       key={node.id}
                       transform={`translate(${node.x}, ${node.y})`}
                       onClick={() => onSelectNode(node.id)}
-                      className="cursor-pointer"
+                      className={`wallet-node cursor-pointer${isSelected ? " is-selected" : ""}${isHighlighted ? " is-correlated" : ""}${nodeFrozen ? " is-frozen" : ""}`}
+                      data-wallet-id={node.id}
+                      data-selected={isSelected}
                       role="button"
                       tabIndex={0}
+                      aria-pressed={isSelected}
                       aria-label={`Select wallet cluster ${node.label} on ${node.chain}`}
                       onKeyDown={(e) => {
                         if (e.key === "Enter" || e.key === " ") {
@@ -312,6 +347,7 @@ export const MatrixGraphCanvas: React.FC<MatrixGraphCanvasProps> = ({
                       }}
                     >
                       <rect
+                        className="wallet-node-shape"
                         x="-56"
                         y="-34"
                         width="112"
@@ -323,7 +359,7 @@ export const MatrixGraphCanvas: React.FC<MatrixGraphCanvasProps> = ({
                             : "var(--surface)"
                         }
                         stroke={strokeColor}
-                        strokeWidth={isSelected ? 2.2 : 1.2}
+                        strokeWidth={isHighlighted ? 2.2 : 1.2}
                       />
                       <text
                         x="-48"
@@ -352,7 +388,7 @@ export const MatrixGraphCanvas: React.FC<MatrixGraphCanvasProps> = ({
                         className="text-[10px] font-mono fill-sky-400"
                       >
                         In: ${(node.inflowUsd / 1_000_000).toFixed(2)}M
-                        {nodeFrozen ? " [FROZEN]" : ""}
+                        {nodeFrozen && <tspan className="wallet-frozen-label" fill="var(--danger)"> [FROZEN]</tspan>}
                       </text>
                     </g>
                   );
@@ -397,8 +433,14 @@ export const MatrixGraphCanvas: React.FC<MatrixGraphCanvasProps> = ({
             </div>
 
             <table
-              className="w-full text-left border-collapse font-mono text-[11px] tabular-nums"
+              className="ledger-matrix w-full text-left border-collapse font-mono text-[11px] tabular-nums"
               data-testid="adjacency-matrix-table"
+              onMouseLeave={() => setMatrixCrosshair(null)}
+              onBlur={(event) => {
+                if (!event.currentTarget.contains(event.relatedTarget)) {
+                  setMatrixCrosshair(null);
+                }
+              }}
             >
               <thead>
                 <tr className="border-b border-outline text-slate-400">
@@ -410,6 +452,11 @@ export const MatrixGraphCanvas: React.FC<MatrixGraphCanvasProps> = ({
                       key={colNode.id}
                       className="py-2 px-1.5 text-right font-medium bg-surface"
                       title={`${colNode.label} (${colNode.address})`}
+                      scope="col"
+                      tabIndex={0}
+                      data-crosshair={matrixCrosshair?.column === cIdx}
+                      onMouseEnter={() => setMatrixCrosshair({ row: null, column: cIdx })}
+                      onFocus={() => setMatrixCrosshair({ row: null, column: cIdx })}
                     >
                       W{cIdx + 1}
                     </th>
@@ -426,17 +473,23 @@ export const MatrixGraphCanvas: React.FC<MatrixGraphCanvasProps> = ({
                     <tr
                       key={rowNode.id}
                       onClick={() => onSelectNode(rowNode.id)}
+                      data-crosshair-row={matrixCrosshair?.row === rIdx}
                       className={`cursor-pointer transition-colors ${
                         isRowSelected
                           ? "bg-sky-950/30"
                           : "hover:bg-slate-900/60"
                       }`}
                     >
-                      <td className="py-2 px-2 font-medium text-slate-200 whitespace-nowrap">
+                      <td
+                        className="py-2 px-2 font-medium text-slate-200 whitespace-nowrap"
+                        data-crosshair={matrixCrosshair?.row === rIdx}
+                        onMouseEnter={() => setMatrixCrosshair({ row: rIdx, column: null })}
+                      >
                         <button
                           type="button"
                           aria-pressed={isRowSelected}
                           aria-label={`Inspect ${rowNode.label}`}
+                          onFocus={() => setMatrixCrosshair({ row: rIdx, column: null })}
                           onClick={(event) => {
                             event.stopPropagation();
                             onSelectNode(rowNode.id);
@@ -454,6 +507,34 @@ export const MatrixGraphCanvas: React.FC<MatrixGraphCanvasProps> = ({
                         return (
                           <td
                             key={colNode.id}
+                            tabIndex={0}
+                            data-matrix-row={rIdx}
+                            data-matrix-column={cIdx}
+                            data-crosshair={matrixCrosshair?.row === rIdx || matrixCrosshair?.column === cIdx}
+                            aria-label={`From ${rowNode.label} to ${colNode.label}: ${mode === "matrix_vol" ? `$${val.toFixed(2)} million` : val.toFixed(3)}. Press Enter to inspect the source wallet.`}
+                            onMouseEnter={() => setMatrixCrosshair({ row: rIdx, column: cIdx })}
+                            onFocus={() => setMatrixCrosshair({ row: rIdx, column: cIdx })}
+                            onKeyDown={(event) => {
+                              if (event.key === "Enter" || event.key === " ") {
+                                event.preventDefault();
+                                onSelectNode(rowNode.id);
+                                return;
+                              }
+                              const directions: Record<string, [number, number]> = {
+                                ArrowUp: [-1, 0],
+                                ArrowDown: [1, 0],
+                                ArrowLeft: [0, -1],
+                                ArrowRight: [0, 1],
+                              };
+                              const direction = directions[event.key];
+                              if (!direction) return;
+                              event.preventDefault();
+                              const row = Math.max(0, Math.min(nodes.length - 1, rIdx + direction[0]));
+                              const column = Math.max(0, Math.min(nodes.length - 1, cIdx + direction[1]));
+                              event.currentTarget.closest("table")
+                                ?.querySelector<HTMLTableCellElement>(`[data-matrix-row="${row}"][data-matrix-column="${column}"]`)
+                                ?.focus();
+                            }}
                             className={`py-2 px-1.5 text-right whitespace-nowrap ${
                               isNonZero
                                 ? "text-sky-300 font-semibold bg-sky-500/10"
@@ -468,7 +549,11 @@ export const MatrixGraphCanvas: React.FC<MatrixGraphCanvasProps> = ({
                           </td>
                         );
                       })}
-                      <td className="py-2 px-2 text-right text-amber-300 font-medium whitespace-nowrap">
+                      <td
+                        className="py-2 px-2 text-right text-amber-300 font-medium whitespace-nowrap"
+                        data-crosshair={matrixCrosshair?.row === rIdx}
+                        onMouseEnter={() => setMatrixCrosshair({ row: rIdx, column: null })}
+                      >
                         {nodeEntropies[rIdx].toFixed(2)}b
                       </td>
                     </tr>
@@ -560,7 +645,7 @@ export const MatrixGraphCanvas: React.FC<MatrixGraphCanvasProps> = ({
         </div>
 
         {/* Connected Micro-Transaction Batch Stream for Selected Cluster */}
-        <div className="connected-streams">
+        {!compact && <div className="connected-streams">
           <div className="text-xs font-medium text-slate-400 mb-2">
             Connected High-Velocity Flow Vectors ({connectedEdges.length}{" "}
             streams)
@@ -602,7 +687,7 @@ export const MatrixGraphCanvas: React.FC<MatrixGraphCanvasProps> = ({
               );
             })}
           </div>
-        </div>
+        </div>}
       </div>
     </div>
   );
