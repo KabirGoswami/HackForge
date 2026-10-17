@@ -1,0 +1,9 @@
+pandas
+numpy
+scipy
+networkx
+plotly
+streamlit
+anthropic
+pytest
+python-louvain # Provides the `community` module used for Louvain detection

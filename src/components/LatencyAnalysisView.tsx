@@ -1,12 +1,12 @@
-import React from 'react';
+import React from "react";
 import {
   CorrelationBreakdown,
   LedgerEdge,
   OsintArtifact,
   WalletNode,
   computeLatencyScore,
-} from '../engine/forensicEngine';
-import { Sliders, ShieldAlert, Lock, CheckCircle2 } from 'lucide-react';
+} from "../engine/forensicEngine";
+import { ShieldAlert, Lock, CheckCircle2 } from "lucide-react";
 
 interface LatencyAnalysisViewProps {
   correlations: CorrelationBreakdown[];
@@ -42,91 +42,100 @@ export const LatencyAnalysisView: React.FC<LatencyAnalysisViewProps> = ({
     correlations[0];
 
   // Sample points for the Gaussian Latency Decay Curve L(Δt) from Δt = 0s to 20s
-  const sampleDeltas = [0, 0.5, 1.0, 1.5, 2.0, 3.0, 4.0, 6.0, 8.0, 10.0, 12.0, 15.0, 20.0];
+  const sampleDeltas = [
+    0, 0.5, 1.0, 1.5, 2.0, 3.0, 4.0, 6.0, 8.0, 10.0, 12.0, 15.0, 20.0,
+  ];
   const expectedLag =
-    activeSuspect.suspectId === 'susp-kestrel'
+    activeSuspect.suspectId === "susp-kestrel"
       ? 1.5
-      : activeSuspect.suspectId === 'susp-v0id'
-      ? 4.0
-      : 9.5;
+      : activeSuspect.suspectId === "susp-v0id"
+        ? 4.0
+        : 9.5;
 
   return (
     <div className="space-y-6">
       {/* Statistical Model Hyperparameters & Posterior Attribution Table */}
-      <div className="bg-[#111827] border border-slate-800 rounded-lg overflow-hidden">
-        <div className="p-5 border-b border-slate-800 flex flex-wrap items-center justify-between gap-4">
-          <div>
-            <h2 className="text-base font-semibold text-slate-100">
-              03. Bayesian Identity Attribution &amp; Time-Delta Latency Model
-            </h2>
-            <p className="text-xs text-slate-400 mt-0.5">
-              <span>Posterior P(Entity | Cluster)</span>
-              <span className="mx-1.5" aria-hidden="true">·</span>
-              <span>Hawkes Kernel L(Δt; τ, σ)</span>
-              <span className="mx-1.5" aria-hidden="true">·</span>
-              <span>Spectral Graph Clustering</span>
+      <div className="panel overflow-hidden">
+        <div className="model-heading">
+          <h2 className="text-sm font-semibold">
+            Bayesian identity attribution &amp; time-delta latency model
+          </h2>
+          <p className="text-xs text-slate-400 mt-2">
+            Posterior P(Entity | Cluster) · Hawkes kernel L(Δt; τ, σ) · Spectral
+            graph clustering
+          </p>
+        </div>
+        <div className="model-controls">
+          <div className="model-control">
+            <label htmlFor="sigma-bandwidth-slider">
+              <span>Latency bandwidth σ</span>
+              <strong className="font-mono text-accent">
+                {bandwidthSigmaSec.toFixed(1)}s
+              </strong>
+            </label>
+            <input
+              id="sigma-bandwidth-slider"
+              type="range"
+              min="1.0"
+              max="15.0"
+              step="0.5"
+              value={bandwidthSigmaSec}
+              onChange={(e) =>
+                onChangeBandwidthSigma(parseFloat(e.target.value))
+              }
+            />
+            <p>
+              Adjust the time window used to correlate OSINT events with ledger
+              activity.
             </p>
           </div>
-
-          {/* Interactive Statistical Parameter Sliders */}
-          <div className="flex flex-wrap items-center gap-6 bg-[#0B0F19] px-4 py-2.5 border border-slate-800 rounded-md">
-            <div className="flex items-center gap-3">
-              <Sliders className="w-3.5 h-3.5 text-sky-400 shrink-0" />
-              <label
-                htmlFor="sigma-bandwidth-slider"
-                className="text-xs text-slate-300 whitespace-nowrap"
-              >
-                Latency Bandwidth σ:{' '}
-                <strong className="font-mono tabular-nums text-sky-300">
-                  {bandwidthSigmaSec.toFixed(1)}s
-                </strong>
-              </label>
-              <input
-                id="sigma-bandwidth-slider"
-                type="range"
-                min="1.0"
-                max="15.0"
-                step="0.5"
-                value={bandwidthSigmaSec}
-                onChange={(e) => onChangeBandwidthSigma(parseFloat(e.target.value))}
-                className="w-24 accent-sky-400 cursor-pointer"
-              />
-            </div>
-
-            <div className="flex items-center gap-3">
-              <label
-                htmlFor="entropy-weight-slider"
-                className="text-xs text-slate-300 whitespace-nowrap"
-              >
-                Mixer Entropy Penalty:{' '}
-                <strong className="font-mono tabular-nums text-amber-300">
-                  {(mixerEntropyWeight * 100).toFixed(0)}%
-                </strong>
-              </label>
-              <input
-                id="entropy-weight-slider"
-                type="range"
-                min="0.05"
-                max="0.85"
-                step="0.05"
-                value={mixerEntropyWeight}
-                onChange={(e) =>
-                  onChangeMixerEntropyWeight(parseFloat(e.target.value))
-                }
-                className="w-24 accent-amber-400 cursor-pointer"
-              />
-            </div>
+          <div className="model-control">
+            <label htmlFor="entropy-weight-slider">
+              <span>Mixer entropy penalty</span>
+              <strong className="font-mono text-warning">
+                {(mixerEntropyWeight * 100).toFixed(0)}%
+              </strong>
+            </label>
+            <input
+              id="entropy-weight-slider"
+              type="range"
+              min="0.05"
+              max="0.85"
+              step="0.05"
+              value={mixerEntropyWeight}
+              onChange={(e) =>
+                onChangeMixerEntropyWeight(parseFloat(e.target.value))
+              }
+            />
+            <p>
+              Control the influence of mixer branching entropy on attribution.
+            </p>
           </div>
         </div>
 
         {/* High-Density Suspect Attribution Table */}
-        <div className="overflow-x-auto">
+        <div
+          className="overflow-x-auto"
+          tabIndex={0}
+          role="region"
+          aria-label="Suspect attribution rankings"
+        >
           <table
             className="w-full text-left border-collapse text-xs"
             data-testid="attribution-rankings-table"
           >
+            <colgroup>
+              <col style={{ width: "15%" }} />
+              <col style={{ width: "19%" }} />
+              <col style={{ width: "11%" }} />
+              <col style={{ width: "9%" }} />
+              <col style={{ width: "10%" }} />
+              <col style={{ width: "9%" }} />
+              <col style={{ width: "13%" }} />
+              <col style={{ width: "14%" }} />
+            </colgroup>
             <thead>
-              <tr className="border-b border-slate-800 bg-[#0B0F19] text-slate-400 font-medium">
+              <tr className="border-b border-outline bg-canvas text-slate-400 font-medium">
                 <th className="py-3 px-4">Suspect Identity / Alias</th>
                 <th className="py-3 px-4">Target Cash-Out Cluster</th>
                 <th className="py-3 px-3 text-right">Mean Δt Latency</th>
@@ -137,7 +146,7 @@ export const LatencyAnalysisView: React.FC<LatencyAnalysisViewProps> = ({
                 <th className="py-3 px-4 text-right">Interception Action</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-800/70 font-mono tabular-nums">
+            <tbody className="divide-y divide-outline/70 font-mono tabular-nums">
               {correlations.map((row) => {
                 const isSelected = row.suspectId === activeSuspect.suspectId;
                 const isFrozen = frozenWalletIds.includes(row.targetWalletId);
@@ -147,12 +156,22 @@ export const LatencyAnalysisView: React.FC<LatencyAnalysisViewProps> = ({
                     key={row.suspectId}
                     onClick={() => onSelectSuspect(row.suspectId)}
                     className={`cursor-pointer transition-colors ${
-                      isSelected ? 'bg-sky-950/25' : 'hover:bg-slate-900/50'
+                      isSelected ? "bg-sky-950/25" : "hover:bg-slate-900/50"
                     }`}
                   >
                     <td className="py-3 px-4 font-sans">
                       <div className="font-semibold text-slate-100 font-mono">
-                        {row.suspectHandle}
+                        <button
+                          type="button"
+                          className="suspect-select"
+                          aria-pressed={isSelected}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            onSelectSuspect(row.suspectId);
+                          }}
+                        >
+                          {row.suspectHandle}
+                        </button>
                       </div>
                       <div className="text-slate-400 text-[11px]">
                         {row.realNameHint}
@@ -169,7 +188,8 @@ export const LatencyAnalysisView: React.FC<LatencyAnalysisViewProps> = ({
                       </div>
                     </td>
                     <td className="py-3 px-3 text-right text-sky-300">
-                      {row.meanTimeDeltaSec.toFixed(2)}s ({row.matchedEventCount} hits)
+                      {row.meanTimeDeltaSec.toFixed(2)}s (
+                      {row.matchedEventCount} hits)
                     </td>
                     <td className="py-3 px-3 text-right text-slate-200">
                       {(row.temporalScore * 100).toFixed(1)}%
@@ -184,10 +204,10 @@ export const LatencyAnalysisView: React.FC<LatencyAnalysisViewProps> = ({
                       <span
                         className={`font-bold text-sm ${
                           row.posteriorProbability >= 80
-                            ? 'text-rose-400'
+                            ? "text-rose-400"
                             : row.posteriorProbability >= 55
-                            ? 'text-amber-300'
-                            : 'text-slate-300'
+                              ? "text-amber-300"
+                              : "text-slate-300"
                         }`}
                       >
                         {row.posteriorProbability.toFixed(1)}%
@@ -206,8 +226,8 @@ export const LatencyAnalysisView: React.FC<LatencyAnalysisViewProps> = ({
                         disabled={isFrozen}
                         className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded transition-colors whitespace-nowrap shrink-0 ${
                           isFrozen
-                            ? 'bg-slate-800 text-emerald-400 border border-emerald-500/30 cursor-default'
-                            : 'bg-rose-600 hover:bg-rose-500 text-white'
+                            ? "bg-slate-800 text-emerald-400 border border-emerald-500/30 cursor-default"
+                            : "bg-rose-600 hover:bg-rose-500 text-white"
                         }`}
                       >
                         {isFrozen ? (
@@ -218,7 +238,10 @@ export const LatencyAnalysisView: React.FC<LatencyAnalysisViewProps> = ({
                         ) : (
                           <>
                             <ShieldAlert className="w-3 h-3" />
-                            <span>Freeze ${Math.round(row.atRiskVolumeUsd / 1_000_000)}M</span>
+                            <span>
+                              Freeze $
+                              {Math.round(row.atRiskVolumeUsd / 1_000_000)}M
+                            </span>
                           </>
                         )}
                       </button>
@@ -232,24 +255,28 @@ export const LatencyAnalysisView: React.FC<LatencyAnalysisViewProps> = ({
       </div>
 
       {/* Two-Column Deep-Dive: Time-Delta Kernel Curve & Event-to-Block Correlation Matrix */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
+      <div className="analysis-detail-grid">
         {/* Left: Gaussian Latency Kernel Curve for Selected Suspect */}
-        <div className="lg:col-span-5 bg-[#111827] border border-slate-800 rounded-lg p-5 flex flex-col justify-between">
+        <div className="panel p-5 flex flex-col justify-between">
           <div>
             <h3 className="text-sm font-semibold text-slate-100">
               Time-Delta Latency Kernel L(Δt) — {activeSuspect.suspectHandle}
             </h3>
             <p className="text-xs text-slate-400 mt-1">
-              Measures probability density that an on-chain transaction at{' '}
-              <span className="font-mono">t_tx</span> was triggered by an OSINT commit/message at{' '}
-              <span className="font-mono">t_osint</span> given expected automation lag τ ={' '}
-              <span className="font-mono tabular-nums">{expectedLag.toFixed(1)}s</span>.
+              Measures probability density that an on-chain transaction at{" "}
+              <span className="font-mono">t_tx</span> was triggered by an OSINT
+              commit/message at <span className="font-mono">t_osint</span> given
+              expected automation lag τ ={" "}
+              <span className="font-mono tabular-nums">
+                {expectedLag.toFixed(1)}s
+              </span>
+              .
             </p>
 
-            <div className="mt-4 bg-[#0B0F19] border border-slate-800 rounded p-3">
+            <div className="mt-4 bg-canvas border border-outline rounded p-3">
               <svg
                 viewBox="0 0 420 190"
-                className="w-full h-[175px]"
+                className="w-full h-auto min-h-[210px]"
                 role="img"
                 aria-label={`Gaussian time-delta latency curve for ${activeSuspect.suspectHandle}`}
               >
@@ -263,7 +290,7 @@ export const LatencyAnalysisView: React.FC<LatencyAnalysisViewProps> = ({
                         y1={y}
                         x2="400"
                         y2={y}
-                        stroke="#1E293B"
+                        stroke="var(--border)"
                         strokeDasharray="3 3"
                       />
                       <text
@@ -281,7 +308,7 @@ export const LatencyAnalysisView: React.FC<LatencyAnalysisViewProps> = ({
                 {/* Polyline of L(Δt) */}
                 <polyline
                   fill="none"
-                  stroke="#38BDF8"
+                  stroke="var(--accent)"
                   strokeWidth="2.2"
                   points={sampleDeltas
                     .map((dt) => {
@@ -289,12 +316,12 @@ export const LatencyAnalysisView: React.FC<LatencyAnalysisViewProps> = ({
                       const score = computeLatencyScore(
                         dt,
                         expectedLag,
-                        bandwidthSigmaSec
+                        bandwidthSigmaSec,
                       );
                       const y = 155 - score * 125;
                       return `${x.toFixed(1)},${y.toFixed(1)}`;
                     })
-                    .join(' ')}
+                    .join(" ")}
                 />
 
                 {/* Observed Mean Delta Marker */}
@@ -303,7 +330,7 @@ export const LatencyAnalysisView: React.FC<LatencyAnalysisViewProps> = ({
                   const obsScore = computeLatencyScore(
                     obsDt,
                     expectedLag,
-                    bandwidthSigmaSec
+                    bandwidthSigmaSec,
                   );
                   const cx = 36 + (obsDt / 20) * 364;
                   const cy = 155 - obsScore * 125;
@@ -314,11 +341,11 @@ export const LatencyAnalysisView: React.FC<LatencyAnalysisViewProps> = ({
                         y1={cy}
                         x2={cx}
                         y2={155}
-                        stroke="#F43F5E"
+                        stroke="var(--danger)"
                         strokeWidth="1.5"
                         strokeDasharray="2 2"
                       />
-                      <circle cx={cx} cy={cy} r="5" fill="#F43F5E" />
+                      <circle cx={cx} cy={cy} r="5" fill="var(--danger)" />
                       <text
                         x={Math.min(340, cx + 8)}
                         y={Math.max(24, cy - 6)}
@@ -349,38 +376,37 @@ export const LatencyAnalysisView: React.FC<LatencyAnalysisViewProps> = ({
             </div>
           </div>
 
-          <div className="mt-4 pt-3 border-t border-slate-800 text-xs text-slate-300 font-mono tabular-nums space-y-1">
-            <div>
-              Formula: L(Δt) = exp( -( |Δt| - τ )² / (2σ²) )
-            </div>
+          <div className="mt-4 pt-3 border-t border-outline text-xs text-slate-300 font-mono tabular-nums space-y-1">
+            <div>Formula: L(Δt) = exp( -( |Δt| - τ )² / (2σ²) )</div>
             <div className="text-slate-400">
-              τ = {expectedLag.toFixed(1)}s · σ = {bandwidthSigmaSec.toFixed(1)}s ·
-              Posterior = {activeSuspect.posteriorProbability.toFixed(1)}%
+              τ = {expectedLag.toFixed(1)}s · σ = {bandwidthSigmaSec.toFixed(1)}
+              s · Posterior = {activeSuspect.posteriorProbability.toFixed(1)}%
             </div>
           </div>
         </div>
 
         {/* Right: Synchronized Timestamp Cross-Correlation Proof Ledger */}
-        <div className="lg:col-span-7 bg-[#111827] border border-slate-800 rounded-lg p-5 flex flex-col justify-between">
+        <div className="panel p-5 flex flex-col justify-between">
           <div>
             <h3 className="text-sm font-semibold text-slate-100">
               Synchronized OSINT-to-Blockchain Timestamp Alignment
             </h3>
             <p className="text-xs text-slate-400 mt-1">
-              Direct chronological pairing between scraped off-chain artifacts and on-chain block execution timestamps.
+              Direct chronological pairing between scraped off-chain artifacts
+              and on-chain block execution timestamps.
             </p>
 
             <div className="mt-4 overflow-x-auto">
               <table className="w-full text-left border-collapse text-xs font-mono tabular-nums">
                 <thead>
-                  <tr className="border-b border-slate-800 text-slate-400">
+                  <tr className="border-b border-outline text-slate-400">
                     <th className="py-2 pr-3">OSINT Event (t_osint)</th>
                     <th className="py-2 px-3">Matched Ledger Tx (t_tx)</th>
                     <th className="py-2 px-3 text-right">Latency Δt</th>
                     <th className="py-2 pl-3 text-right">Shared Fingerprint</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-800/60">
+                <tbody className="divide-y divide-outline/60">
                   {artifacts.map((art) => {
                     // Find closest ledger transaction
                     let closestEdge = edges[0];
@@ -393,7 +419,7 @@ export const LatencyAnalysisView: React.FC<LatencyAnalysisViewProps> = ({
                       }
                     }
                     const dstNode = nodes.find(
-                      (n) => n.id === closestEdge.targetId
+                      (n) => n.id === closestEdge.targetId,
                     );
 
                     return (
@@ -403,12 +429,13 @@ export const LatencyAnalysisView: React.FC<LatencyAnalysisViewProps> = ({
                             {art.authorAlias} · {art.sourceType}
                           </div>
                           <div className="text-slate-400 text-[11px]">
-                            T+{art.timestampSec.toFixed(1)}s ({art.timestampUtc})
+                            T+{art.timestampSec.toFixed(1)}s ({art.timestampUtc}
+                            )
                           </div>
                         </td>
                         <td className="py-2.5 px-3">
                           <div className="text-slate-200">
-                            Tx {closestEdge.txHash.slice(0, 10)}... →{' '}
+                            Tx {closestEdge.txHash.slice(0, 10)}... →{" "}
                             {dstNode?.address.slice(0, 6)}
                           </div>
                           <div className="text-slate-400 text-[11px]">
@@ -420,10 +447,10 @@ export const LatencyAnalysisView: React.FC<LatencyAnalysisViewProps> = ({
                           <span
                             className={`font-semibold ${
                               minDiff <= 2.5
-                                ? 'text-rose-400'
+                                ? "text-rose-400"
                                 : minDiff <= 5.0
-                                ? 'text-amber-300'
-                                : 'text-slate-300'
+                                  ? "text-amber-300"
+                                  : "text-slate-300"
                             }`}
                           >
                             +{minDiff.toFixed(2)}s
@@ -442,10 +469,13 @@ export const LatencyAnalysisView: React.FC<LatencyAnalysisViewProps> = ({
             </div>
           </div>
 
-          <div className="mt-4 pt-3 border-t border-slate-800 flex items-center justify-between text-xs text-slate-400">
+          <div className="mt-4 pt-3 border-t border-outline flex flex-wrap gap-3 items-center justify-between text-xs text-slate-400">
             <span className="flex items-center gap-1.5 text-emerald-400">
               <CheckCircle2 className="w-3.5 h-3.5" />
-              <span>Sub-2.0s execution correlation proves automated script trigger ownership</span>
+              <span>
+                Sub-2.0s execution correlation proves automated script trigger
+                ownership
+              </span>
             </span>
             <span className="font-mono tabular-nums">p-value &lt; 0.00014</span>
           </div>
