@@ -1,9 +1,5 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  INITIAL_WALLET_NODES,
-  INITIAL_LEDGER_EDGES,
-  INITIAL_OSINT_ARTIFACTS,
-  INITIAL_SUSPECTS,
   PRESET_SCRAPE_FEEDS,
   OsintArtifact,
   FreezeWarrant,
@@ -16,6 +12,9 @@ import { FreezeWarrantsView } from "./components/FreezeWarrantsView";
 import { CaseOverview } from "./components/CaseOverview";
 import { AlertsPanel } from "./components/AlertsPanel";
 import { AnalystCopilot } from "./components/AnalystCopilot";
+import { WarRoomLanding } from "./components/WarRoomLanding";
+import { InvestigationSelector } from "./components/InvestigationSelector";
+import { createInvestigation, loadInvestigationStore, saveInvestigationStore, type Investigation } from "./investigations";
 import {
   Activity,
   ArrowDownToLine,
@@ -23,7 +22,6 @@ import {
   CheckCircle2,
   ChevronRight,
   FileCheck2,
-  FolderOpen,
   LayoutDashboard,
   Menu,
   Network,
@@ -34,9 +32,9 @@ import {
 
 const workspaces = [
   {
-    id: "overview",
-    title: "Case overview",
-    description: "Incident summary and live identity-to-wallet attribution.",
+    id: "home",
+    title: "Home",
+    description: "Two investigation teams, connected by evidence.",
     icon: LayoutDashboard,
   },
   {
@@ -68,10 +66,58 @@ const workspaces = [
 type ActiveSection = (typeof workspaces)[number]["id"];
 const readSection = (): ActiveSection => {
   const id = window.location.hash.replace(/^#\/?/, "");
-  return workspaces.find((workspace) => workspace.id === id)?.id ?? "overview";
+  return workspaces.find((workspace) => workspace.id === id)?.id ?? "home";
 };
 
 export default function App() {
+  const [store, setStore] = useState(loadInvestigationStore);
+  const [storageUnavailable, setStorageUnavailable] = useState(false);
+  const [focusInvestigation, setFocusInvestigation] = useState(false);
+  const investigation = store.investigations.find((item) => item.id === store.activeInvestigationId)!;
+
+  useEffect(() => {
+    setStorageUnavailable(!saveInvestigationStore(store));
+  }, [store]);
+
+  const handleSelectInvestigation = useCallback((id: string) => {
+    setFocusInvestigation(true);
+    window.location.hash = "#/";
+    setStore((previous) => previous.investigations.some((item) => item.id === id)
+      ? { ...previous, activeInvestigationId: id } : previous);
+  }, []);
+
+  const handleCreateInvestigation = useCallback((details: { title: string; description: string }) => {
+    setFocusInvestigation(true);
+    window.location.hash = "#/";
+    setStore((previous) => {
+      const created = createInvestigation(details, previous.investigations);
+      return { ...previous, activeInvestigationId: created.id, investigations: [...previous.investigations, created] };
+    });
+  }, []);
+
+  const handleUpdateInvestigation = useCallback((id: string, patch: Partial<Investigation>) => {
+    setStore((previous) => {
+      const current = previous.investigations.find((item) => item.id === id);
+      if (!current || Object.entries(patch).every(([key, value]) => current[key as keyof Investigation] === value)) return previous;
+      return { ...previous, investigations: previous.investigations.map((item) => item.id === id ? { ...item, ...patch } : item) };
+    });
+  }, []);
+
+  return <InvestigationWorkspace key={investigation.id} investigation={investigation}
+    investigations={store.investigations} onSelectInvestigation={handleSelectInvestigation}
+    onCreateInvestigation={handleCreateInvestigation} onUpdateInvestigation={handleUpdateInvestigation}
+    storageUnavailable={storageUnavailable} focusInvestigation={focusInvestigation} />;
+}
+
+function InvestigationWorkspace({ investigation, investigations, onSelectInvestigation, onCreateInvestigation, onUpdateInvestigation, storageUnavailable, focusInvestigation }: {
+  investigation: Investigation;
+  investigations: Investigation[];
+  onSelectInvestigation: (id: string) => void;
+  onCreateInvestigation: (details: { title: string; description: string }) => void;
+  onUpdateInvestigation: (id: string, patch: Partial<Investigation>) => void;
+  storageUnavailable: boolean;
+  focusInvestigation: boolean;
+}) {
   const [activeSection, setActiveSection] =
     useState<ActiveSection>(readSection);
   const [navigationOpen, setNavigationOpen] = useState(false);
@@ -83,6 +129,9 @@ export default function App() {
   const menuRef = useRef<HTMLButtonElement>(null);
   const sidebarRef = useRef<HTMLElement>(null);
   const page = workspaces.find((workspace) => workspace.id === activeSection)!;
+  useEffect(() => {
+    if (focusInvestigation) titleRef.current?.focus({ preventScroll: true });
+  }, [investigation.id, focusInvestigation]);
   const closeNavigation = () => {
     setNavigationOpen(false);
     window.requestAnimationFrame(() => menuRef.current?.focus());
@@ -100,23 +149,24 @@ export default function App() {
 
   useEffect(() => {
     const onHashChange = () => {
+      if (/^#\/?(?:overview|home)$/.test(window.location.hash)) window.history.replaceState(null, "", "#/");
       setActiveSection(readSection());
       setNavigationOpen(false);
     };
     window.addEventListener("hashchange", onHashChange);
-    if (!window.location.hash)
-      window.history.replaceState(null, "", "#/overview");
+    if (!window.location.hash || /^#\/?(?:overview|home)$/.test(window.location.hash))
+      window.history.replaceState(null, "", "#/");
     return () => window.removeEventListener("hashchange", onHashChange);
   }, []);
 
   useEffect(() => {
-    document.title = `${page.title} | Quantitative OSINT Blockchain Engine`;
+    document.title = `${page.title} | ${investigation.title} | QOBE`;
     if (previousSection.current !== activeSection) {
       titleRef.current?.focus({ preventScroll: true });
       window.scrollTo({ top: 0, behavior: "instant" });
     }
     previousSection.current = activeSection;
-  }, [activeSection, page.title]);
+  }, [activeSection, page.title, investigation.title]);
 
   useEffect(() => {
     if (!navigationOpen) return;
@@ -149,38 +199,33 @@ export default function App() {
     };
   }, [navigationOpen]);
 
-  const [nodes] = useState(INITIAL_WALLET_NODES);
-  const [edges] = useState(INITIAL_LEDGER_EDGES);
+  const nodes = investigation.nodes;
+  const edges = investigation.edges;
+  const hasLedger = nodes.length > 0;
+  const scrapeFeeds = investigation.mode === "replay" ? PRESET_SCRAPE_FEEDS : [];
   const [artifacts, setArtifacts] = useState<OsintArtifact[]>(
-    INITIAL_OSINT_ARTIFACTS,
+    investigation.artifacts,
   );
-  const [presetIndex, setPresetIndex] = useState<number>(0);
+  const [presetIndex, setPresetIndex] = useState(investigation.presetIndex);
 
   // Selected wallet cluster & suspect
   const [selectedNodeId, setSelectedNodeId] =
-    useState<string>("w-cex-offshore-1");
+    useState(investigation.selectedNodeId);
   const [selectedSuspectId, setSelectedSuspectId] =
-    useState<string>("susp-kestrel");
+    useState(investigation.selectedSuspectId);
 
   // Statistical modeling parameters
-  const [bandwidthSigmaSec, setBandwidthSigmaSec] = useState<number>(4.5);
-  const [mixerEntropyWeight, setMixerEntropyWeight] = useState<number>(0.35);
+  const [bandwidthSigmaSec, setBandwidthSigmaSec] = useState(investigation.bandwidthSigmaSec);
+  const [mixerEntropyWeight, setMixerEntropyWeight] = useState(investigation.mixerEntropyWeight);
 
   // Enforced Freeze Warrants
-  const [warrants, setWarrants] = useState<FreezeWarrant[]>([
-    {
-      warrantId: "WRN-2026-0891",
-      createdAtUtc: "08:02:11 UTC",
-      suspectHandle: "@kestrel_0x",
-      targetWalletAddress: "0xc409e881b27a4401f932d110e87a5502b991f312",
-      exchangeEndpoint: "Consolidation Staging Vault (0xc409...f312)",
-      frozenAmountUsd: 1_120_000,
-      posteriorConfidence: 96.4,
-      primaryEvidenceHash: "0x8f3a91d...e719a402",
-      meanLatencyDeltaSec: 1.43,
-      status: "ENFORCED_FREEZE",
-    },
-  ]);
+  const [warrants, setWarrants] = useState<FreezeWarrant[]>(investigation.warrants);
+
+  useEffect(() => {
+    onUpdateInvestigation(investigation.id, {
+      artifacts, warrants, presetIndex, selectedNodeId, selectedSuspectId, bandwidthSigmaSec, mixerEntropyWeight,
+    });
+  }, [investigation.id, artifacts, warrants, presetIndex, selectedNodeId, selectedSuspectId, bandwidthSigmaSec, mixerEntropyWeight, onUpdateInvestigation]);
 
   const [statusBanner, setStatusBanner] = useState<string | null>(null);
 
@@ -197,11 +242,11 @@ export default function App() {
       nodes,
       edges,
       artifacts,
-      INITIAL_SUSPECTS,
+      investigation.suspects,
       bandwidthSigmaSec,
       mixerEntropyWeight,
     );
-  }, [nodes, edges, artifacts, bandwidthSigmaSec, mixerEntropyWeight]);
+  }, [nodes, edges, artifacts, investigation.suspects, bandwidthSigmaSec, mixerEntropyWeight]);
 
   const topSuspect = correlations[0];
 
@@ -212,8 +257,8 @@ export default function App() {
 
   // Handler: Scrape next queued live threat feed
   const handleScrapePresetFeed = () => {
-    if (presetIndex >= PRESET_SCRAPE_FEEDS.length) return;
-    const rawPreset = PRESET_SCRAPE_FEEDS[presetIndex];
+    if (presetIndex >= scrapeFeeds.length) return;
+    const rawPreset = scrapeFeeds[presetIndex];
     const newArtifact: OsintArtifact = {
       ...rawPreset,
       id: `osint-scraped-${Date.now()}`,
@@ -241,6 +286,7 @@ export default function App() {
 
     const matchedCorr =
       correlations.find((c) => c.targetWalletId === walletId) || topSuspect;
+    if (!matchedCorr) return;
 
     const newWarrant: FreezeWarrant = {
       warrantId: `WRN-2026-0${892 + warrants.length}`,
@@ -270,6 +316,7 @@ export default function App() {
   const [warRoomKpis, setWarRoomKpis] = useState<any>(null);
 
   useEffect(() => {
+    if (investigation.mode !== "replay") return;
     const fetchAlertsAndHeatmap = async () => {
       try {
         const [alertsRes, heatmapRes, kpiRes] = await Promise.all([
@@ -291,7 +338,7 @@ export default function App() {
     fetchAlertsAndHeatmap();
     const interval = setInterval(fetchAlertsAndHeatmap, 30000); // Poll every 30s
     return () => clearInterval(interval);
-  }, []);
+  }, [investigation.mode]);
 
   const handleUpdateThreshold = async (val: number) => {
     try {
@@ -313,9 +360,10 @@ export default function App() {
 
   const handleExportDossier = () => {
     const payload = {
-      incident: "Tuesday 02:14 UTC DeFi Protocol Exploit ($42,000,000)",
+      investigation: { id: investigation.id, title: investigation.title, reference: investigation.reference, description: investigation.description },
+      incident: investigation.mode === "replay" ? "Tuesday 02:14 UTC DeFi Protocol Exploit ($42,000,000)" : investigation.title,
       generatedAtUtc: new Date().toISOString(),
-      topAttribution: topSuspect,
+      topAttribution: topSuspect ?? null,
       correlations,
       enforcedWarrants: warrants,
       osintArtifactCount: artifacts.length,
@@ -326,18 +374,20 @@ export default function App() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = "aethertrace-forensic-dossier.json";
+    a.download = investigation.mode === "replay" ? "aethertrace-forensic-dossier.json" : `${investigation.reference.toLowerCase()}-dossier.json`;
     a.click();
     URL.revokeObjectURL(url);
     setStatusBanner(
-      "Exported cryptographic attribution dossier (aethertrace-forensic-dossier.json)."
+      `Exported ${investigation.title} dossier (${a.download}).`
     );
   };
 
   const primaryCashOutFrozen = frozenWalletIds.includes("w-cex-offshore-1");
+  const canFreezePrimary = nodes.some((node) => node.id === "w-cex-offshore-1") && !primaryCashOutFrozen;
+  const selectorProps = { investigations, activeInvestigationId: investigation.id, onSelect: onSelectInvestigation, onCreate: onCreateInvestigation };
 
   return (
-    <div className="app-shell">
+    <div className={`app-shell${activeSection === "home" ? " is-home" : ""}`}>
       <a
         className="skip-link"
         href="#workspace-title"
@@ -364,9 +414,9 @@ export default function App() {
       >
         <div className="brand-row">
           <a
-            href="#/overview"
+            href="#/"
             className="brand"
-            aria-label="Quantitative OSINT Blockchain Engine case overview"
+            aria-label="QOBE home"
             onClick={() => setNavigationOpen(false)}
           >
             <span>
@@ -384,21 +434,14 @@ export default function App() {
             <X size={19} />
           </button>
         </div>
-        <div className="case-switcher">
-          <FolderOpen size={17} />
-          <div>
-            <span>Active investigation</span>
-            <strong>AT-42M-0214</strong>
-          </div>
-          <span className="status-dot" aria-label="Active" />
-        </div>
+        <InvestigationSelector {...selectorProps} variant="sidebar" />
         <nav aria-label="Primary workspace navigation">
           <span className="navigation-label">Investigation workspace</span>
           {workspaces.map(({ id, title, icon: Icon }) => (
             <a
               key={id}
               data-workspace={id}
-              href={`#/${id}`}
+              href={id === "home" ? "#/" : `#/${id}`}
               aria-current={activeSection === id ? "page" : undefined}
               className={`navigation-link ${activeSection === id ? "is-active" : ""}`}
               onClick={() => {
@@ -420,11 +463,11 @@ export default function App() {
         <div className="sidebar-bottom">
           <div className="case-status">
             <span className="status-dot" />
-            <span>Active interception</span>
-            <span className="font-mono">06:00</span>
+            <span>{investigation.mode === "replay" ? "Active interception" : "Evidence collection"}</span>
+            <span className="font-mono">{investigation.mode === "replay" ? "06:00" : "Collecting"}</span>
           </div>
           <p>
-            Case reference <span className="font-mono">#AT-42M-0214</span>
+            Case reference <span className="font-mono">#{investigation.reference}</span>
           </p>
           <div className="sidebar-signature">
             <span>
@@ -440,6 +483,10 @@ export default function App() {
         inert={isMobile && navigationOpen}
       >
         <header className="workspace-topbar">
+          {activeSection === "home" ? <>
+            <a className="home-brand" href="#/" aria-label="QOBE home"><span>QOBE</span><small>Quantitative OSINT<br />Blockchain Engine</small></a>
+            <InvestigationSelector {...selectorProps} variant="header" />
+          </> : <>
           <div className="topbar-context">
             <button
               ref={menuRef}
@@ -451,7 +498,7 @@ export default function App() {
             >
               <Menu size={21} />
             </button>
-            <span className="breadcrumb-case">Case AT-42M-0214</span>
+            <span className="breadcrumb-case">{investigation.title} <span className="font-mono">#{investigation.reference}</span></span>
             <ChevronRight size={14} />
             <span>{page.title}</span>
           </div>
@@ -463,31 +510,26 @@ export default function App() {
             <button
               type="button"
               className={
-                primaryCashOutFrozen
-                  ? "button button-primary"
-                  : "button button-danger"
+                canFreezePrimary ? "button button-danger" : "button button-primary"
               }
               onClick={() =>
-                primaryCashOutFrozen
-                  ? handleExportDossier()
-                  : handleIssueFreeze("w-cex-offshore-1")
+                canFreezePrimary ? handleIssueFreeze("w-cex-offshore-1") : handleExportDossier()
               }
             >
-              {primaryCashOutFrozen ? (
+              {!canFreezePrimary ? (
                 <ArrowDownToLine size={15} />
               ) : (
                 <ShieldAlert size={15} />
               )}
               <span>
-                {primaryCashOutFrozen
-                  ? "Export forensic dossier"
-                  : "Freeze $27.28M cash-out"}
+                {canFreezePrimary ? "Freeze $27.28M cash-out" : "Export forensic dossier"}
               </span>
             </button>
           </div>
+          </>}
         </header>
         <main className={`workspace-content workspace-${activeSection}`}>
-          <div className="page-heading">
+          {activeSection !== "home" && <div className="page-heading">
             <div>
               <h1 ref={titleRef} id="workspace-title" tabIndex={-1}>
                 {page.title}
@@ -495,9 +537,10 @@ export default function App() {
               <p>{page.description}</p>
             </div>
             <span className="page-reference">
-              <span className="reference-symbol">#</span>AT-42M-0214
+              <span className="reference-symbol">#</span>{investigation.reference}
             </span>
-          </div>
+          </div>}
+          {storageUnavailable && <p className="feedback-banner" role="alert">Browser storage is unavailable. Changes will remain available for this session.</p>}
           {statusBanner && (
             <div className="feedback-banner" role="status">
               <CheckCircle2 size={18} />
@@ -513,12 +556,25 @@ export default function App() {
 
           {/* Keep workspaces mounted so drafts, filters, and visualization modes survive navigation. */}
           <section
-            hidden={activeSection !== "overview"}
-            aria-label="Case overview"
+            hidden={activeSection !== "home"}
+            aria-label="War room"
           >
-            <div className="flex gap-4 h-full">
-              <div className="flex-1">
-                <CaseOverview
+            <WarRoomLanding
+              investigation={investigation}
+              headingRef={activeSection === "home" ? titleRef : undefined}
+              correlations={correlations}
+              artifacts={artifacts}
+              nodes={nodes}
+              edges={edges}
+              totalFrozenUsd={totalFrozenUsd}
+            />
+            <details id="case-operations" className="war-room-archive">
+              <summary>
+                <span>Case operations</span>
+                <span>Incident summary, attribution &amp; analyst copilot</span>
+              </summary>
+              <div className="war-room-existing-layout">
+                {hasLedger && correlations.length > 0 ? <CaseOverview
                   correlations={correlations}
                   artifacts={artifacts}
                   warrants={warrants}
@@ -527,20 +583,18 @@ export default function App() {
                   frozenWalletIds={frozenWalletIds}
                   onIssueFreeze={handleIssueFreeze}
                   warRoomKpis={warRoomKpis}
-                />
-              </div >
-              <div className="w-96 shrink-0">
-                <AnalystCopilot
+                /> : <div className="empty-case-summary"><h2>{investigation.title}</h2><p>{investigation.description || "A new investigation, ready for evidence."}</p><dl><div><dt>Case reference</dt><dd>{investigation.reference}</dd></div><div><dt>Indexed sources</dt><dd>{artifacts.length}</dd></div><div><dt>Wallet clusters</dt><dd>{nodes.length}</dd></div></dl><a className="text-link" href="#/osint">Collect OSINT evidence <ArrowUpRight size={14} /></a></div>}
+                {investigation.mode === "replay" ? <AnalystCopilot
                   suspectId={selectedNodeId}
-                />
-              </div >
-            </div >
+                /> : <EmptyWorkspace title="Build the evidence trail" description="Add source material to this investigation. Its evidence and case records stay separate from your other investigations." />}
+              </div>
+            </details>
           </section>
           <section
             hidden={activeSection !== "matrix"}
             aria-label="Forensic matrix"
           >
-            <div className="flex gap-4 h-full">
+            {hasLedger ? <div className="flex gap-4 h-full">
               <div className="flex-1 relative">
                 <MatrixGraphCanvas
                   nodes={nodes}
@@ -559,7 +613,7 @@ export default function App() {
                   onUpdateThreshold={handleUpdateThreshold}
                 />
               </div >
-            </div >
+            </div > : <EmptyWorkspace title="No ledger data indexed" description="No ledger has been added to this investigation. Its graph will appear when wallet and transaction data is available." />}
           </section>
           <section
             hidden={activeSection !== "osint"}
@@ -569,14 +623,19 @@ export default function App() {
               artifacts={artifacts}
               onAddArtifact={handleAddArtifact}
               onScrapePresetFeed={handleScrapePresetFeed}
-              remainingPresetsCount={PRESET_SCRAPE_FEEDS.length - presetIndex}
+              remainingPresetsCount={scrapeFeeds.length - presetIndex}
+              initialSourceOrigin={investigation.mode === "custom" ? "" : undefined}
+              initialTimestampSec={investigation.mode === "custom" ? 0 : undefined}
+              knownSuspects={investigation.mode === "custom" ? investigation.suspects : undefined}
+              replayControls={investigation.mode === "replay"}
+              eventBaselineUtc={investigation.mode === "custom" ? investigation.createdAtUtc : undefined}
             />
           </section>
           <section
             hidden={activeSection !== "latency"}
             aria-label="Latency model"
           >
-            <LatencyAnalysisView
+            {correlations.length > 0 ? <LatencyAnalysisView
               correlations={correlations}
               bandwidthSigmaSec={bandwidthSigmaSec}
               onChangeBandwidthSigma={setBandwidthSigmaSec}
@@ -589,25 +648,25 @@ export default function App() {
               onIssueFreeze={handleIssueFreeze}
               selectedSuspectId={selectedSuspectId}
               onSelectSuspect={setSelectedSuspectId}
-            />
+            /> : <EmptyWorkspace title="No correlations to model yet" description="Timing, behavioral, and graph models become available when this investigation has indexed evidence and wallet data." />}
           </section>
           <section
             hidden={activeSection !== "warrants"}
             aria-label="Freeze warrants"
           >
-            <FreezeWarrantsView
+            {hasLedger && correlations.length > 0 ? <FreezeWarrantsView
               warrants={warrants}
               correlations={correlations}
               nodes={nodes}
               frozenWalletIds={frozenWalletIds}
               onIssueFreeze={handleIssueFreeze}
               onExportJson={handleExportDossier}
-            />
+            /> : <EmptyWorkspace title="No intervention records yet" description="This investigation has no linked cash-out endpoints or freeze warrants. Its case records will appear here as evidence is connected." />}
           </section>
           <footer className="workspace-footer">
             <span>
               Quantitative OSINT Blockchain Engine{" "}
-              <span className="footer-case"> / Case #AT-42M-0214</span>
+              <span className="footer-case"> / {investigation.title} #{investigation.reference}</span>
             </span>
             <button onClick={handleExportDossier}>
               Download JSON dossier <ArrowUpRight size={13} />
@@ -617,4 +676,8 @@ export default function App() {
       </div>
     </div>
   );
+}
+
+function EmptyWorkspace({ title, description }: { title: string; description: string }) {
+  return <div className="investigation-empty-state"><Radar size={27} aria-hidden="true" /><h2>{title}</h2><p>{description}</p><a href="#/osint">Open OSINT evidence <ArrowUpRight size={14} /></a></div>;
 }

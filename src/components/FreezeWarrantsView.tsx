@@ -10,9 +10,6 @@ import {
   Lock,
   CheckCircle2,
   FileText,
-  ArrowUpRight,
-  Activity,
-  Radar,
 } from "lucide-react";
 
 interface FreezeWarrantsViewProps {
@@ -41,7 +38,7 @@ export const FreezeWarrantsView: React.FC<FreezeWarrantsViewProps> = ({
     <div className="space-y-6">
       <div className="panel warrant-summary">
         <div>
-          <h2>Intervention records</h2>
+          <h2>Offshore exchange interception</h2>
           <p>
             Mathematical attribution packages and emergency compliance relay for
             cash-out endpoints.
@@ -206,9 +203,6 @@ export const FreezeWarrantsView: React.FC<FreezeWarrantsViewProps> = ({
                         ? "Warrant enforced"
                         : "Issue emergency freeze warrant"}
                     </button>
-                    <small className="simulated-workflow-note">
-                      Demo: simulated freeze action
-                    </small>
                   </div>
                 </article>
               );
@@ -242,78 +236,6 @@ export const FreezeWarrantsView: React.FC<FreezeWarrantsViewProps> = ({
           deposit desk <code className="text-sky-300">0x99e4b108...c108</code>.
         </p>
       </div>
-      <section className="panel case-about" aria-labelledby="case-about-heading">
-        <div className="panel-heading">
-          <h2 id="case-about-heading">About Ghost Attacks</h2>
-          <span className="briefing-icon">
-            <Radar size={19} />
-          </span>
-        </div>
-        <div className="briefing-body">
-          <h3>Quantitative OSINT &amp; Blockchain Attribution Engine</h3>
-          <p>
-            Fusing unstructured dark web, Telegram, and GitHub repository
-            markers with the 9×9 multi-chain transaction tensor via Hawkes
-            time-delta latency modeling and spectral graph clustering.
-          </p>
-          <dl className="briefing-facts">
-            <div>
-              <dt>Case reference</dt>
-              <dd>AT-42M-0214</dd>
-            </div>
-            <div>
-              <dt>Exploit timestamp</dt>
-              <dd>Tuesday 02:14:00 UTC</dd>
-            </div>
-            <div>
-              <dt>Investigation phase</dt>
-              <dd>
-                <span className="status-dot" />
-                Active interception
-              </dd>
-            </div>
-            <div>
-              <dt>Elapsed response</dt>
-              <dd>Hour 06:00</dd>
-            </div>
-          </dl>
-          <a href="#/matrix" className="button button-secondary briefing-action">
-            Open ledger <ArrowUpRight size={15} />
-          </a>
-        </div>
-      </section>
-      <section
-        className="case-quick-navigation"
-        aria-labelledby="case-navigation-heading"
-      >
-        <h2 id="case-navigation-heading">Quick navigation</h2>
-        <nav className="workspace-shortcuts" aria-label="Case workspaces">
-          <a href="#/matrix">
-            <Activity size={21} />
-            <div>
-              <strong>Follow the fund flow</strong>
-              <span>Graph topology and transaction matrices</span>
-            </div>
-            <ArrowUpRight size={17} />
-          </a>
-          <a href="#/osint">
-            <Radar size={21} />
-            <div>
-              <strong>Inspect the evidence</strong>
-              <span>Indexed off-chain artifacts and extracted markers</span>
-            </div>
-            <ArrowUpRight size={17} />
-          </a>
-          <a href="#/latency">
-            <Activity size={21} />
-            <div>
-              <strong>Tune the models</strong>
-              <span>Attribution scores and timestamp alignment</span>
-            </div>
-            <ArrowUpRight size={17} />
-          </a>
-        </nav>
-      </section>
     </div>
   );
 };

@@ -15,6 +15,11 @@ interface OsintScraperPanelProps {
   onScrapePresetFeed: () => void;
   remainingPresetsCount: number;
   compact?: boolean;
+  initialSourceOrigin?: string;
+  initialTimestampSec?: number;
+  knownSuspects?: { id: string; handle: string }[];
+  replayControls?: boolean;
+  eventBaselineUtc?: string;
 }
 
 export const OsintScraperPanel: React.FC<OsintScraperPanelProps> = ({
@@ -23,6 +28,11 @@ export const OsintScraperPanel: React.FC<OsintScraperPanelProps> = ({
   onScrapePresetFeed,
   remainingPresetsCount,
   compact = false,
+  initialSourceOrigin = "github.com/kestrel-labs/mev-bundler",
+  initialTimestampSec = 19798.5,
+  knownSuspects,
+  replayControls = true,
+  eventBaselineUtc,
 }) => {
   const [sourceFilter, setSourceFilter] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState<string>("");
@@ -32,9 +42,9 @@ export const OsintScraperPanel: React.FC<OsintScraperPanelProps> = ({
   const [sourceType, setSourceType] =
     useState<OsintArtifact["sourceType"]>("GitHub Commit");
   const [sourceOrigin, setSourceOrigin] = useState<string>(
-    "github.com/kestrel-labs/mev-bundler",
+    initialSourceOrigin,
   );
-  const [timestampSecInput, setTimestampSecInput] = useState<string>("19798.5");
+  const [timestampSecInput, setTimestampSecInput] = useState<string>(String(initialTimestampSec));
   const [rawTextInput, setRawTextInput] = useState<string>("");
   const [validationError, setValidationError] = useState<string | null>(null);
 
@@ -70,27 +80,27 @@ export const OsintScraperPanel: React.FC<OsintScraperPanelProps> = ({
     }
 
     const parsedSec = parseFloat(timestampSecInput);
-    if (Number.isNaN(parsedSec)) {
+    const eventTime = new Date((eventBaselineUtc ? Date.parse(eventBaselineUtc) : Date.UTC(2026, 0, 1, 2, 14)) + parsedSec * 1000);
+    if (!Number.isFinite(parsedSec) || !Number.isFinite(eventTime.getTime())) {
       setValidationError(
-        "Valid numeric timestamp offset (seconds since 02:14 UTC) is required.",
+        "Enter a valid numeric event offset in seconds.",
       );
       return;
     }
 
     setValidationError(null);
     const extracted = extractOsintMarkers(rawTextInput);
-    const detectedAlias = extracted.handles[0] || "@kestrel_0x";
+    const detectedAlias = extracted.handles[0] || (knownSuspects ? "Unknown author" : "@kestrel_0x");
 
-    const linkedSuspectId = detectedAlias.toLowerCase().includes("v0id")
+    const linkedSuspectId = knownSuspects
+      ? knownSuspects.find((suspect) => suspect.handle.toLowerCase() === detectedAlias.toLowerCase())?.id ?? ""
+      : detectedAlias.toLowerCase().includes("v0id")
       ? "susp-v0id"
       : detectedAlias.toLowerCase().includes("lynx")
         ? "susp-lynx"
         : "susp-kestrel";
 
-    const hours = Math.floor(parsedSec / 3600) + 2;
-    const mins = Math.floor((parsedSec % 3600) / 60) + 14;
-    const secs = (parsedSec % 60).toFixed(1);
-    const formattedUtc = `0${hours % 24}:${String(mins % 60).padStart(2, "0")}:${String(secs).padStart(4, "0")} UTC`;
+    const formattedUtc = `${eventTime.toISOString().slice(11, 23)} UTC`;
 
     const newArtifact: OsintArtifact = {
       id: `osint-custom-${Date.now()}`,
@@ -129,16 +139,14 @@ export const OsintScraperPanel: React.FC<OsintScraperPanelProps> = ({
     <div>
       <div className="osint-header">
         <div>
-          <h2 className="domain-heading domain-heading-osint">
-            Threat feed &amp; repository scraper
-          </h2>
+          <h2>Threat feed &amp; repository scraper</h2>
           <p>
             {artifacts.length} indexed artifacts · Automated regex &amp;
             heuristic marker extraction
           </p>
         </div>
         <div className="osint-header-actions">
-          <button
+          {replayControls && <button
             type="button"
             onClick={onScrapePresetFeed}
             disabled={remainingPresetsCount === 0}
@@ -148,7 +156,7 @@ export const OsintScraperPanel: React.FC<OsintScraperPanelProps> = ({
             {remainingPresetsCount > 0
               ? `Scrape live threat feed (${remainingPresetsCount})`
               : "All threat feeds scraped"}
-          </button>
+          </button>}
           <button
             type="button"
             aria-expanded={showIngestForm}
@@ -190,13 +198,13 @@ export const OsintScraperPanel: React.FC<OsintScraperPanelProps> = ({
               Parse unstructured text and fuse extracted markers into the
               attribution matrix.
             </p>
-            <button
+            {replayControls && <button
               type="button"
               onClick={handleLoadSamplePayload}
               className="text-link underline"
             >
               Load sample leaked commit diff
-            </button>
+            </button>}
             <div className="ingest-fields">
               <div>
                 <label htmlFor="osint-source-type">Feed channel type</label>
@@ -228,7 +236,7 @@ export const OsintScraperPanel: React.FC<OsintScraperPanelProps> = ({
               </div>
               <div>
                 <label htmlFor="osint-timestamp-sec">
-                  Event offset (sec post-02:14 UTC)
+                  {eventBaselineUtc ? "Event offset (sec since case creation)" : "Event offset (sec post-02:14 UTC)"}
                 </label>
                 <input
                   id="osint-timestamp-sec"
@@ -237,6 +245,7 @@ export const OsintScraperPanel: React.FC<OsintScraperPanelProps> = ({
                   value={timestampSecInput}
                   onChange={(e) => setTimestampSecInput(e.target.value)}
                 />
+                {eventBaselineUtc && <p className="text-[10px] text-slate-400 mt-2">Origin: {eventBaselineUtc}</p>}
               </div>
               <div>
                 <label htmlFor="osint-raw-payload">Raw unstructured text</label>
@@ -332,10 +341,9 @@ export const OsintScraperPanel: React.FC<OsintScraperPanelProps> = ({
             {filteredArtifacts.length === 0 ? (
               <div className="empty-evidence">
                 <Radar size={28} className="mx-auto text-accent mb-4" />
-                <h3>No OSINT threat artifacts match your current filter</h3>
+                <h3>{artifacts.length === 0 ? "No evidence indexed for this investigation" : "No OSINT threat artifacts match your current filter"}</h3>
                 <p>
-                  Clear your search query or ingest a new threat snippet to
-                  populate identity markers.
+                  {artifacts.length === 0 ? "Ingest a source snippet to start collecting identity markers." : "Clear your search query or ingest a new threat snippet to populate identity markers."}
                 </p>
                 <button
                   type="button"
@@ -373,27 +381,11 @@ export const OsintScraperPanel: React.FC<OsintScraperPanelProps> = ({
                   <dl className="artifact-markers">
                     <div>
                       <dt>Extracted IPs</dt>
-                      <dd className="marker-tags">
-                        {art.extractedIps.length > 0
-                          ? art.extractedIps.map((ip) => (
-                              <code className="marker-tag" key={ip}>
-                                {ip}
-                              </code>
-                            ))
-                          : "None"}
-                      </dd>
+                      <dd>{art.extractedIps.join(", ") || "None"}</dd>
                     </div>
                     <div>
                       <dt>Wallet addresses</dt>
-                      <dd className="marker-tags">
-                        {art.extractedWallets.length > 0
-                          ? art.extractedWallets.map((wallet) => (
-                              <code className="marker-tag" key={wallet}>
-                                {wallet}
-                              </code>
-                            ))
-                          : "None"}
-                      </dd>
+                      <dd>{art.extractedWallets.join(", ") || "None"}</dd>
                     </div>
                     {art.extractedGasQuirk !== undefined && (
                       <div>
