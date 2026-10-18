@@ -1,8 +1,11 @@
 import { useEffect, useId, useRef, useState, type Ref } from "react";
-import { ArrowDown, ArrowRight, ArrowUpRight, Fingerprint, GitCommitHorizontal, Link2, Network, Radar, X } from "lucide-react";
+import { ArrowDown, ArrowRight, ArrowUpRight, Fingerprint, GitCommitHorizontal, Link2, Network, Radar, X, Box, Sparkles } from "lucide-react";
 import type { CorrelationBreakdown, LedgerEdge, OsintArtifact, WalletNode } from "../engine/forensicEngine";
 import type { Investigation } from "../investigations";
+import { SplitTransactionVisualizer3D } from "./SplitTransactionVisualizer3D";
 import "./WarRoomLanding.css";
+
+
 
 interface WarRoomLandingProps {
   investigation: Pick<Investigation, "title" | "reference" | "description" | "drainedUsd" | "exploitLabel" | "mode">;
@@ -60,7 +63,31 @@ export function WarRoomLanding({ investigation, headingRef, correlations, artifa
           <h1 ref={headingRef} id={headingRef ? "workspace-title" : undefined} tabIndex={-1}>{investigation.title}<span>The hunt has two fronts.</span></h1>
           <p>One team follows the human. The other follows the money. The evidence meets in the middle.</p>
         </div>
-        <span className="war-room-incident"><strong>{investigation.mode === "replay" ? amountLabel : `${artifacts.length} ${artifacts.length === 1 ? "source" : "sources"}`}</strong><span>{investigation.exploitLabel}</span></span>
+        <div className="war-room-intro-meta">
+          <span className="war-room-incident"><strong>{investigation.mode === "replay" ? amountLabel : `${artifacts.length} ${artifacts.length === 1 ? "source" : "sources"}`}</strong><span>{investigation.exploitLabel}</span></span>
+        </div>
+        <div className="war-room-telemetry-bar" aria-label="Investigation metrics telemetry">
+          <div className="war-telemetry-item">
+            <span className="telemetry-label">Correlated Entities</span>
+            <strong className="telemetry-value font-mono">{correlations.length}</strong>
+            <small>Active suspects</small>
+          </div>
+          <div className="war-telemetry-item">
+            <span className="telemetry-label">Frozen Assets</span>
+            <strong className="telemetry-value font-mono">${(totalFrozenUsd / 1_000_000).toFixed(2)}M</strong>
+            <small>Intercepted capital</small>
+          </div>
+          <div className="war-telemetry-item">
+            <span className="telemetry-label">Wallet Clusters</span>
+            <strong className="telemetry-value font-mono">{nodes.length}</strong>
+            <small>Traceable nodes</small>
+          </div>
+          <div className="war-telemetry-item">
+            <span className="telemetry-label">Indexed Sources</span>
+            <strong className="telemetry-value font-mono">{artifacts.length}</strong>
+            <small>OSINT feeds</small>
+          </div>
+        </div>
       </div>
 
       <section className="war-room-arena" aria-label="Choose your investigation team">
@@ -90,7 +117,7 @@ export function WarRoomLanding({ investigation, headingRef, correlations, artifa
         </a>
 
         <div className="war-bridge-column">
-          <span className="war-bridge-link-label"><Link2 size={13} /> Shared intelligence</span>
+          <span className="war-bridge-link-label"><Link2 size={13} /> Shared intelligence · Bayesian Attribution Nexus</span>
           <div className="war-bridge-symbol"><BridgeStructure /></div>
           <h3>Evidence<br />Bridge</h3>
           <p>Where the identity<br />meets the transaction.</p>
@@ -103,6 +130,7 @@ export function WarRoomLanding({ investigation, headingRef, correlations, artifa
           <div className="war-bridge-proof" aria-live="polite">
             <div><span>Fee fingerprint</span><code>{feeMatches.length ? `${source!.extractedGasQuirk} gwei` : "No fee match"}</code></div>
             <div><span>Event → transaction</span><code>{delta !== null ? `${delta >= 0 ? "+" : "−"}${Math.abs(delta).toFixed(2)}s` : "No indexed pair"}</code></div>
+            <div><span>Graph affinity</span><code>{selected ? `${(selected.graphClusterScore * 100).toFixed(1)}%` : "—"}</code></div>
           </div>
           <button className="war-bridge-open" onClick={() => setInspecting(true)} disabled={!hasEvidence}>Inspect the bridge <ArrowUpRight size={16} /></button>
           <div className="war-bridge-score"><strong>{selected ? `${selected.posteriorProbability.toFixed(1)}%` : "—"}</strong><span>model score</span></div>
@@ -122,6 +150,47 @@ export function WarRoomLanding({ investigation, headingRef, correlations, artifa
           </div>
           <div className="war-team-footer"><span className="war-team-enter">Enter ledger workspace <ArrowRight size={18} /></span></div>
         </a>
+
+        {hasEvidence && (
+          <div className="war-bridge-concourse" aria-label="Active bridge connection live synthesis">
+            <div className="war-concourse-left">
+              <span className="concourse-tag"><Radar size={13} /> Active Off-Chain Signal</span>
+              <strong className="concourse-author">{source!.authorAlias}</strong>
+              <p className="concourse-quote">"{source!.rawText.length > 105 ? source!.rawText.slice(0, 105) + "…" : source!.rawText}"</p>
+              <div className="concourse-chips">
+                {source!.extractedIps[0] && <code>{source!.extractedIps[0]}</code>}
+                <span>{source!.sourceOrigin}</span>
+              </div>
+            </div>
+            <div className="war-concourse-center">
+              <div className="concourse-pulse-line">
+                <span className="pulse-dot" />
+                <span className="pulse-track" />
+                <span className="pulse-dot" />
+              </div>
+              <span className="concourse-bridge-title">Live Cross-Attribution</span>
+              <p className="concourse-bridge-detail">
+                {feeMatches.length > 0 ? "Exact gas quirk verified" : "Heuristic link"} · {delta !== null ? `Δt ${Math.abs(delta).toFixed(2)}s` : "Timing pending"}
+              </p>
+              <button
+                type="button"
+                className="concourse-inspect-btn"
+                onClick={() => setInspecting(true)}
+              >
+                Inspect full connection <ArrowUpRight size={13} />
+              </button>
+            </div>
+            <div className="war-concourse-right">
+              <span className="concourse-tag"><Network size={13} /> Correlated Ledger Target</span>
+              <strong className="concourse-author">{target!.label}</strong>
+              <code className="concourse-address">{shortAddress(target!.address)}</code>
+              <div className="concourse-chips">
+                <span>Inflow: ${(target!.inflowUsd / 1_000_000).toFixed(2)}M</span>
+                <span>{target!.chain}</span>
+              </div>
+            </div>
+          </div>
+        )}
       </section>
 
       <div className="war-room-case-strip" aria-label="Shared investigation summary">
@@ -134,6 +203,50 @@ export function WarRoomLanding({ investigation, headingRef, correlations, artifa
           if (details) { details.open = true; details.querySelector("summary")?.focus(); details.scrollIntoView({ behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth", block: "start" }); }
         }}>Case operations <ArrowDown size={13} /></a>
       </div>
+
+      {/* 3D Micro-Transaction Peel-Chain Splitter Visualizer Module */}
+      <section className="war-room-3d-split-module panel p-4 my-5" aria-label="3D Micro-Transaction Split Simulation">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3.5 pb-3 border-b border-border">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-lg bg-iris/20 text-iris border border-iris/40 flex items-center justify-center shrink-0">
+              <Box size={19} />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h2 className="text-sm font-semibold text-slate-100">
+                  3D Micro-Transaction Fracture Cloud
+                </h2>
+                <span className="text-[10px] font-mono text-emerald-300 bg-emerald-950/80 border border-emerald-700/60 px-1.5 py-0.5 rounded flex items-center gap-1">
+                  <Sparkles size={10} /> WebGL 3D
+                </span>
+              </div>
+              <p className="text-xs text-muted mt-0.5">
+                Simulating the $42.00M capital fracture through 8 automated peel-chain splitter hubs, ZK mixers, and cross-chain bridges.
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <a
+              href="#/matrix"
+              className="button button-sm button-secondary flex items-center gap-1.5 text-xs px-3 py-1.5"
+            >
+              <span>Explore in Ledger Matrix</span>
+              <ArrowUpRight size={13} />
+            </a>
+          </div>
+        </div>
+
+        <SplitTransactionVisualizer3D
+          nodes={nodes}
+          edges={edges}
+          selectedNodeId={selected?.targetWalletId || nodes[0]?.id || ""}
+          onSelectNode={() => {}}
+          frozenWalletIds={[]}
+          onIssueFreeze={() => {}}
+          height={480}
+        />
+      </section>
+
 
       <dialog ref={dialogRef} className="war-bridge-dialog" aria-labelledby="war-bridge-dialog-title" onClose={() => setInspecting(false)} onClick={(event) => { if (event.target === event.currentTarget) dialogRef.current?.close(); }}>
         <div className="war-bridge-dialog-header">

@@ -1,5 +1,23 @@
 [
   {
+    "source": "mock_social",
+    "author": "@darkpool_leaks",
+    "timestamp": "2026-10-17T23:10:30.386970+00:00",
+    "text": "Alert: High-volume movement detected originating from 0x7a1b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b. Funds splitting into mixers."
+  },
+  {
+    "source": "mock_social",
+    "author": "@chain_watcher",
+    "timestamp": "2026-10-17T23:11:00.386970+00:00",
+    "text": "Burner wallet 0x7a1b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b was pre-funded 2 hours prior to exploit. Potential gas supplier."
+  },
+  {
+    "source": "mock_social",
+    "author": "@burner_hunter",
+    "timestamp": "2026-10-17T23:07:51.386970+00:00",
+    "text": "Cross-referencing staging address 0x7a1b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b with offshore OTC settlement logs. Watch this cluster."
+  },
+  {
     "source": "forum",
     "author": "user_1936",
     "timestamp": "2026-10-12 23:50:06.622452969",

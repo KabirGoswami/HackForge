@@ -4,7 +4,9 @@ import {
   LedgerEdge,
   buildAdjacencyMatrix,
 } from "../engine/forensicEngine";
-import { Network, Grid, ArrowUpRight, ShieldAlert, Lock } from "lucide-react";
+import { Network, Grid, ArrowUpRight, ShieldAlert, Lock, Box, Sparkles } from "lucide-react";
+import { SplitTransactionVisualizer3D } from "./SplitTransactionVisualizer3D";
+
 
 interface MatrixGraphCanvasProps {
   nodes: WalletNode[];
@@ -42,7 +44,7 @@ export const MatrixGraphCanvas: React.FC<MatrixGraphCanvasProps> = ({
   frozenWalletIds,
   onIssueFreeze,
 }) => {
-  const [mode, setMode] = useState<"graph" | "matrix_vol" | "matrix_prob">(
+  const [mode, setMode] = useState<"graph" | "split_3d" | "matrix_vol" | "matrix_prob">(
     "graph",
   );
   const { volumeMatrix, transitionMatrix, nodeEntropies } =
@@ -84,7 +86,7 @@ export const MatrixGraphCanvas: React.FC<MatrixGraphCanvasProps> = ({
           role="tablist"
           aria-label="Ledger Representation Mode"
           onKeyDown={(event) => {
-            const modes = ["graph", "matrix_vol", "matrix_prob"] as const;
+            const modes = ["graph", "split_3d", "matrix_vol", "matrix_prob"] as const;
             let index = modes.indexOf(mode);
             if (event.key === "ArrowRight") index = (index + 1) % modes.length;
             else if (event.key === "ArrowLeft")
@@ -115,6 +117,23 @@ export const MatrixGraphCanvas: React.FC<MatrixGraphCanvasProps> = ({
           >
             <Network className="w-3.5 h-3.5" />
             <span>Graph Topology</span>
+          </button>
+          <button
+            type="button"
+            role="tab"
+            id="tab-split_3d"
+            aria-controls="ledger-visualization"
+            tabIndex={mode === "split_3d" ? 0 : -1}
+            aria-selected={mode === "split_3d"}
+            onClick={() => setMode("split_3d")}
+            className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded transition-colors whitespace-nowrap shrink-0 ${
+              mode === "split_3d"
+                ? "bg-iris/20 text-iris border border-iris/40 shadow-sm font-semibold"
+                : "text-slate-400 hover:text-slate-200"
+            }`}
+          >
+            <Box className="w-3.5 h-3.5 text-iris" />
+            <span>3D Split Fracture (WebGL)</span>
           </button>
           <button
             type="button"
@@ -153,6 +172,7 @@ export const MatrixGraphCanvas: React.FC<MatrixGraphCanvasProps> = ({
         </div>
       </div>
 
+
       {/* Main Visualization Viewport */}
       <div
         id="ledger-visualization"
@@ -160,7 +180,20 @@ export const MatrixGraphCanvas: React.FC<MatrixGraphCanvasProps> = ({
         aria-labelledby={`tab-${mode}`}
         tabIndex={0}
       >
-        {mode === "graph" ? (
+        {mode === "split_3d" ? (
+          <div className="p-2.5 bg-canvas border-b border-outline">
+            <SplitTransactionVisualizer3D
+              nodes={nodes}
+              edges={edges}
+              selectedNodeId={selectedNodeId}
+              onSelectNode={onSelectNode}
+              frozenWalletIds={frozenWalletIds}
+              onIssueFreeze={onIssueFreeze}
+              height={520}
+            />
+          </div>
+        ) : mode === "graph" ? (
+
           <div className="relative bg-canvas border-b border-outline">
             <div className="graph-scroll">
               <svg

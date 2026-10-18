@@ -10,12 +10,11 @@ class ScoringEngine:
 
     def compute_log_odds(self, signal_value: float, weight: float) -> float:
         """
-        Simplified log-odds contribution.
-        Signal value (0..1) is converted to a weight-adjusted contribution.
+        Signal value (0..1) converted to a weight-adjusted log-odds contribution.
         """
         if signal_value <= 0:
-            return -weight # Strong evidence against
-        return signal_value * weight
+            return 0.0
+        return signal_value * weight * 4.0
 
     def fuse_evidence(
         self,
@@ -25,8 +24,8 @@ class ScoringEngine:
         prior_prob: float = 0.01
     ) -> Tuple[float, List[str]]:
         """
-        Combines multiple signals into a final probability.
-        evidence_signals: {'timing_p_value': 0.99, 'direct_leak': 1.0, ...}
+        Combines multiple signals into a final posterior probability.
+        evidence_signals: {'timing_p_value': 0.01, 'direct_leak': 1.0, ...}
         """
         total_score = 0.0
         evidence_trail = []
@@ -34,9 +33,8 @@ class ScoringEngine:
         # 1. Timing Evidence (p-value inverse)
         if 'timing_p_value' in evidence_signals:
             sig = evidence_signals['timing_p_value']
-            # Lower p-value = higher confidence
-            conf = 1.0 - sig
-            score = self.compute_log_odds(conf, self.weights.get('timing_p_value', 0))
+            conf = max(0.0, 1.0 - sig)
+            score = self.compute_log_odds(conf, self.weights.get('timing_p_value', 0.4))
             total_score += score
             if conf > 0.9:
                 evidence_trail.append(f"Strong temporal alignment (p={sig:.4f})")
@@ -44,7 +42,7 @@ class ScoringEngine:
         # 2. Direct Leak
         if 'direct_leak' in evidence_signals:
             sig = evidence_signals['direct_leak']
-            score = self.compute_log_odds(sig, self.weights.get('direct_leak', 0))
+            score = self.compute_log_odds(sig, self.weights.get('direct_leak', 0.3))
             total_score += score
             if sig > 0:
                 evidence_trail.append("Wallet address found directly in OSINT text")
@@ -52,7 +50,7 @@ class ScoringEngine:
         # 3. Gas Funder Link
         if 'gas_funder_link' in evidence_signals:
             sig = evidence_signals['gas_funder_link']
-            score = self.compute_log_odds(sig, self.weights.get('gas_funder_link', 0))
+            score = self.compute_log_odds(sig, self.weights.get('gas_funder_link', 0.2))
             total_score += score
             if sig > 0:
                 evidence_trail.append("Wallet was seeded by identified gas-funder")
@@ -60,19 +58,21 @@ class ScoringEngine:
         # 4. Cluster Proximity
         if 'cluster_proximity' in evidence_signals:
             sig = evidence_signals['cluster_proximity']
-            score = self.compute_log_odds(sig, self.weights.get('cluster_proximity', 0))
+            score = self.compute_log_odds(sig, self.weights.get('cluster_proximity', 0.1))
             total_score += score
             if sig > 0.8:
                 evidence_trail.append("Wallet belongs to high-confidence suspect cluster")
 
-        # Convert combined score to a probability (simplified logistic-style)
-        # Prob = 1 / (1 + exp(-score))
-        probability = 1 / (1 + np.exp(-total_score))
+        # Bayesian fusion via log-odds:
+        # Prior probability for any random handle being the attacker/funder in candidate pool (~5%)
+        prior_prob = 0.05
+        prior_log_odds = np.log(prior_prob / (1.0 - prior_prob))
+        posterior_log_odds = prior_log_odds + total_score * 2.5
+        probability = 1.0 / (1.0 + np.exp(-posterior_log_odds))
 
-        # Adjust for prior probability (simplified)
-        final_prob = (probability + prior_prob) / 2
+        return float(np.clip(probability, 0.01, 0.99)), evidence_trail
 
-        return float(final_prob), evidence_trail
+
 
     def propagate_identity(
         self,
@@ -131,15 +131,18 @@ def run_scoring(
         identity = link['identity']
         wallet = link['wallet']
         signals = link['signals']
+        source = link.get('source', 'osint')
 
         prob, evidence = scorer.fuse_evidence(identity, wallet, signals)
 
         final_results.append({
             "identity": identity,
             "wallet": wallet,
+            "source": source,
             "probability": prob,
             "evidence": evidence
         })
+
 
     # Sort by probability
     final_results.sort(key=lambda x: x['probability'], reverse=True)

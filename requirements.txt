@@ -7,3 +7,7 @@ streamlit
 anthropic
 pytest
 python-louvain # Provides the `community` module used for Louvain detection
+fastapi
+uvicorn
+requests
+python-dotenv

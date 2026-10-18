@@ -15,20 +15,24 @@ import { AnalystCopilot } from "./components/AnalystCopilot";
 import { WarRoomLanding } from "./components/WarRoomLanding";
 import { InvestigationSelector } from "./components/InvestigationSelector";
 import { createInvestigation, loadInvestigationStore, saveInvestigationStore, type Investigation } from "./investigations";
+import { api } from "./api";
 import {
   Activity,
   ArrowDownToLine,
   ArrowUpRight,
   CheckCircle2,
+  ChevronLeft,
   ChevronRight,
   FileCheck2,
   LayoutDashboard,
   Menu,
   Network,
   Radar,
+  Search,
   ShieldAlert,
   X,
 } from "lucide-react";
+
 
 const workspaces = [
   {
@@ -315,6 +319,40 @@ function InvestigationWorkspace({ investigation, investigations, onSelectInvesti
   const [clusterHeatmap, setClusterHeatmap] = useState<Record<string, number>>({});
   const [warRoomKpis, setWarRoomKpis] = useState<any>(null);
 
+  // Dynamic Live Analysis State (Scenario A: Synthetic, Scenario B: Simulated Live, Scenario C: Real-World)
+  const [targetWalletInput, setTargetWalletInput] = useState("");
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [activeEngineMode, setActiveEngineMode] = useState<"synthetic" | "simulated_live" | "real_world">("synthetic");
+
+  const handleTriggerAnalysis = async () => {
+    setIsAnalyzing(true);
+    try {
+      const result = await api.analyze(targetWalletInput);
+      setActiveEngineMode((result.mode as any) || "synthetic");
+
+      const [alertsRes, heatmapRes, kpiRes] = await Promise.all([
+        fetch("/alerts"),
+        fetch("/heatmap"),
+        fetch("/war-room/kpis")
+      ]);
+      const alertsData = await alertsRes.json();
+      const heatmapData = await heatmapRes.json();
+      const kpiData = await kpiRes.json();
+      setAlerts(alertsData);
+      setClusterHeatmap(heatmapData);
+      setWarRoomKpis(kpiData);
+
+      const modeTitle = result.mode === "real_world" ? "Real-World Live (Etherscan & GitHub)" : result.mode === "simulated_live" ? "Simulated Live" : "Synthetic Baseline";
+      setStatusBanner(
+        `Dynamic Analysis completed in ${modeTitle} mode. ${result.target_wallet ? `Target: ${result.target_wallet}` : "Reset to default synthetic ledger"}. Correlated with live OSINT intelligence.`
+      );
+    } catch (e: any) {
+      setStatusBanner(`Analysis failed: ${e.message || "Network error"}`);
+    } finally {
+      setIsAnalyzing(false);
+    }
+  };
+
   useEffect(() => {
     if (investigation.mode !== "replay") return;
     const fetchAlertsAndHeatmap = async () => {
@@ -483,10 +521,6 @@ function InvestigationWorkspace({ investigation, investigations, onSelectInvesti
         inert={isMobile && navigationOpen}
       >
         <header className="workspace-topbar">
-          {activeSection === "home" ? <>
-            <a className="home-brand" href="#/" aria-label="QOBE home"><span>QOBE</span><small>Quantitative OSINT<br />Blockchain Engine</small></a>
-            <InvestigationSelector {...selectorProps} variant="header" />
-          </> : <>
           <div className="topbar-context">
             <button
               ref={menuRef}
@@ -498,11 +532,55 @@ function InvestigationWorkspace({ investigation, investigations, onSelectInvesti
             >
               <Menu size={21} />
             </button>
+            <a className="topbar-brand" href="#/" aria-label="QOBE home">
+              <span className="brand-badge">QOBE</span>
+            </a>
+            <span className="topbar-crumb-sep">/</span>
             <span className="breadcrumb-case">{investigation.title} <span className="font-mono">#{investigation.reference}</span></span>
             <ChevronRight size={14} />
-            <span>{page.title}</span>
+            <span className="topbar-current-page">{page.title === "Home" ? "Evidence Bridge" : page.title}</span>
           </div>
           <div className="topbar-actions">
+            {/* Live Data Acquisition Bar */}
+            <div className="live-analysis-bar" style={{ display: "flex", alignItems: "center", gap: "6px", background: "var(--surface)", padding: "4px 8px", borderRadius: "8px", border: "1px solid var(--border)" }}>
+              <input
+                type="text"
+                placeholder="Wallet (0x...) or leave blank"
+                value={targetWalletInput}
+                onChange={(e) => setTargetWalletInput(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleTriggerAnalysis()}
+                disabled={isAnalyzing}
+                style={{ background: "transparent", border: "none", color: "var(--text)", fontSize: "11px", fontFamily: "var(--font-mono, monospace)", width: "180px", outline: "none" }}
+              />
+              <button
+                type="button"
+                onClick={handleTriggerAnalysis}
+                disabled={isAnalyzing}
+                className="button button-sm button-secondary"
+                style={{ padding: "3px 8px", fontSize: "11px", display: "flex", alignItems: "center", gap: "4px" }}
+                title="Run dynamic acquisition analysis (Synthetic, Simulated Live, or Real-World)"
+              >
+                <Search size={12} className={isAnalyzing ? "animate-spin" : ""} />
+                <span>{isAnalyzing ? "..." : "Analyze"}</span>
+              </button>
+              <span
+                style={{
+                  fontSize: "9px",
+                  fontFamily: "var(--font-mono, monospace)",
+                  textTransform: "uppercase",
+                  padding: "2px 6px",
+                  borderRadius: "4px",
+                  letterSpacing: "0.05em",
+                  background: activeEngineMode === "real_world" ? "#064e3b" : activeEngineMode === "simulated_live" ? "#451a03" : "#2e1065",
+                  color: activeEngineMode === "real_world" ? "#6ee7b7" : activeEngineMode === "simulated_live" ? "#fcd34d" : "#c4b5fd",
+                  border: `1px solid ${activeEngineMode === "real_world" ? "#059669" : activeEngineMode === "simulated_live" ? "#d97706" : "#7c3aed"}`
+                }}
+              >
+                {activeEngineMode === "real_world" ? "Live Chain" : activeEngineMode === "simulated_live" ? "Sim Live" : "Synthetic"}
+              </span>
+            </div>
+
+            <InvestigationSelector {...selectorProps} variant="header" />
             <span className="live-status">
               <span className="status-dot" />
               Active case
@@ -526,19 +604,28 @@ function InvestigationWorkspace({ investigation, investigations, onSelectInvesti
               </span>
             </button>
           </div>
-          </>}
+
         </header>
         <main className={`workspace-content workspace-${activeSection}`}>
           {activeSection !== "home" && <div className="page-heading">
             <div>
+              <a href="#/" className="page-back-link">
+                <ChevronLeft size={13} />
+                <span>Return to Evidence Bridge</span>
+              </a>
               <h1 ref={titleRef} id="workspace-title" tabIndex={-1}>
                 {page.title}
               </h1>
               <p>{page.description}</p>
             </div>
-            <span className="page-reference">
-              <span className="reference-symbol">#</span>{investigation.reference}
-            </span>
+            <div className="page-heading-meta">
+              <span className="bridge-link-chip">
+                <span className="status-dot" /> Bridge Linked
+              </span>
+              <span className="page-reference">
+                <span className="reference-symbol">#</span>{investigation.reference}
+              </span>
+            </div>
           </div>}
           {storageUnavailable && <p className="feedback-banner" role="alert">Browser storage is unavailable. Changes will remain available for this session.</p>}
           {statusBanner && (

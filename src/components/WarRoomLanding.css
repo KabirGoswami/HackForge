@@ -9,25 +9,9 @@
   padding: 1px 0 36px;
 }
 
-.app-shell.is-home .sidebar {
-  display: none;
-}
-
-.app-shell.is-home .workspace-shell {
-  margin-left: 0;
-}
-
-.app-shell.is-home .workspace-topbar {
-  min-height: 86px;
-  padding-block: 18px;
-  padding-inline: max(48px, calc((100vw - 1504px) / 2));
-  border-bottom-color: #594368;
-  background: #201829;
-}
-
 .app-shell.is-home .workspace-content {
   max-width: 1600px;
-  padding: 32px 48px 28px;
+  padding: 24px 30px 48px;
 }
 
 .home-brand {
@@ -250,11 +234,70 @@
   letter-spacing: -0.05em;
 }
 
+.war-room-intro {
+  position: relative;
+  padding: 10px 0 24px;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: end;
+  gap: 16px 28px;
+}
+
+.war-room-intro-meta {
+  display: flex;
+  align-items: flex-end;
+}
+
+.war-room-telemetry-bar {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 10px;
+  padding: 15px 22px;
+  border: 1px solid #6b557b;
+  border-radius: 12px;
+  background: rgba(36, 28, 46, 0.75);
+  backdrop-filter: blur(8px);
+}
+
+.war-telemetry-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-left: 12px;
+  border-left: 2px solid #8a6da6;
+}
+
+.war-telemetry-item:nth-child(1) { border-left-color: var(--war-warm); }
+.war-telemetry-item:nth-child(2) { border-left-color: var(--war-coral); }
+.war-telemetry-item:nth-child(3) { border-left-color: var(--war-cold); }
+.war-telemetry-item:nth-child(4) { border-left-color: var(--war-violet); }
+
+.telemetry-label {
+  font-size: 10px;
+  color: var(--war-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.telemetry-value {
+  font-size: 20px;
+  color: #f7efff;
+  letter-spacing: -0.04em;
+  line-height: 1.2;
+}
+
+.war-telemetry-item small {
+  font-size: 10px;
+  color: #a894b8;
+}
+
 .war-room-arena {
   isolation: isolate;
   position: relative;
   display: grid;
-  grid-template-columns: 1fr minmax(220px, 0.7fr) 1fr;
+  grid-template-columns: minmax(280px, 1fr) minmax(360px, 1.35fr) minmax(280px, 1fr);
   min-height: 610px;
   overflow: hidden;
   border: 1px solid #756282;
@@ -263,6 +306,174 @@
     radial-gradient(ellipse at 4% 39%, #9b4b434d 0, transparent 52%),
     radial-gradient(ellipse at 98% 39%, #6a60b84d 0, transparent 52%),
     linear-gradient(90deg, #39272f 0%, #251d2c 39%, #241e31 61%, #2e2b48 100%);
+}
+
+.war-bridge-concourse {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: minmax(260px, 1fr) minmax(260px, 1.15fr) minmax(260px, 1fr);
+  align-items: center;
+  gap: 18px;
+  padding: 20px 28px;
+  background: rgba(26, 20, 36, 0.88);
+  border-top: 1px solid #6b567a;
+  backdrop-filter: blur(12px);
+  position: relative;
+  z-index: 2;
+}
+
+.war-concourse-left,
+.war-concourse-right {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.war-concourse-left {
+  border-right: 1px solid #4a3a57;
+  padding-right: 20px;
+}
+
+.war-concourse-right {
+  border-left: 1px solid #4a3a57;
+  padding-left: 20px;
+}
+
+.war-concourse-center {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: 6px;
+  padding: 0 10px;
+}
+
+.concourse-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--war-muted);
+}
+
+.war-concourse-left .concourse-tag {
+  color: var(--war-warm);
+}
+
+.war-concourse-right .concourse-tag {
+  color: var(--war-cold);
+}
+
+.concourse-author {
+  font-size: 14px;
+  color: #f7efff;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.concourse-quote {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.6;
+  color: #d1c1dc;
+  font-style: italic;
+  font-family: var(--font-mono);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.concourse-address {
+  font-size: 11px;
+  color: #c9d7ff;
+  font-family: var(--font-mono);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.concourse-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: auto;
+  font-size: 10px;
+  color: #a795b5;
+}
+
+.concourse-chips code {
+  font-family: var(--font-mono);
+  background: #2f233a;
+  padding: 2px 6px;
+  border-radius: 4px;
+  border: 1px solid #584469;
+  color: #e5d8f2;
+}
+
+.concourse-pulse-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 85%;
+  margin-bottom: 2px;
+}
+
+.pulse-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--war-violet);
+  box-shadow: 0 0 8px var(--war-violet);
+}
+
+.pulse-track {
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(90deg, #ffc68a, #bfa8fc, #b9d9ff);
+}
+
+.concourse-bridge-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: #f2e6ff;
+}
+
+.concourse-bridge-detail {
+  margin: 0;
+  font-size: 10px;
+  color: #b7a4c7;
+  font-family: var(--font-mono);
+}
+
+.concourse-inspect-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 5px;
+  padding: 6px 14px;
+  font-size: 11px;
+  font-weight: 500;
+  border-radius: 6px;
+  border: 1px solid #8e6fac;
+  background: #392849;
+  color: #eedeff;
+  cursor: pointer;
+  transition: all 180ms ease;
+}
+
+.concourse-inspect-btn:hover {
+  background: #4c3662;
+  border-color: #ba98de;
+  color: #fff;
+  box-shadow: 0 0 12px #9872c733;
 }
 
 .war-room-arena::before {
@@ -1195,12 +1406,33 @@
     display: none;
   }
 
+  .war-room-telemetry-bar {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .war-room-arena {
     grid-template-columns: 1fr;
     background:
       radial-gradient(ellipse at 10% 9%, #9b4b434d 0, transparent 40%),
       radial-gradient(ellipse at 91% 91%, #6a60b84d 0, transparent 45%),
       linear-gradient(155deg, #39272f, #241d2e 45%, #2e2b48);
+  }
+
+  .war-bridge-concourse {
+    grid-template-columns: 1fr;
+    gap: 16px;
+    padding: 18px 20px;
+  }
+
+  .war-concourse-left,
+  .war-concourse-right {
+    border: none;
+    padding: 0;
+  }
+
+  .war-concourse-center {
+    border-block: 1px solid #4a3a57;
+    padding-block: 14px;
   }
 
   .war-team {
