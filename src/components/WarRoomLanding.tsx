@@ -1,8 +1,7 @@
 import { useEffect, useId, useRef, useState, type Ref } from "react";
-import { ArrowDown, ArrowRight, ArrowUpRight, Fingerprint, GitCommitHorizontal, Link2, Network, Radar, X, Box, Sparkles } from "lucide-react";
+import { ArrowRight, ArrowUpRight, Fingerprint, GitCommitHorizontal, Link2, Network, Radar, X, Sparkles, FileText, Activity } from "lucide-react";
 import type { CorrelationBreakdown, LedgerEdge, OsintArtifact, WalletNode } from "../engine/forensicEngine";
 import type { Investigation } from "../investigations";
-import { SplitTransactionVisualizer3D } from "./SplitTransactionVisualizer3D";
 import "./WarRoomLanding.css";
 
 
@@ -15,6 +14,7 @@ interface WarRoomLandingProps {
   nodes: WalletNode[];
   edges: LedgerEdge[];
   totalFrozenUsd: number;
+  onOpenBriefing?: () => void;
 }
 
 function matchesWallet(reference: string, address: string) {
@@ -27,7 +27,7 @@ const shortAddress = (address: string) => `${address.slice(0, 8)}…${address.sl
 const replayTime = (seconds: number) =>
   `${new Date(Date.UTC(2026, 0, 1, 2, 14) + seconds * 1000).toISOString().slice(11, 23)} UTC`;
 
-export function WarRoomLanding({ investigation, headingRef, correlations, artifacts, nodes, edges, totalFrozenUsd }: WarRoomLandingProps) {
+export function WarRoomLanding({ investigation, headingRef, correlations, artifacts, nodes, edges, totalFrozenUsd, onOpenBriefing }: WarRoomLandingProps) {
   const [suspectId, setSuspectId] = useState(correlations[0]?.suspectId ?? "");
   const [artifactId, setArtifactId] = useState<string | null>(null);
   const [inspecting, setInspecting] = useState(false);
@@ -64,6 +64,17 @@ export function WarRoomLanding({ investigation, headingRef, correlations, artifa
           <p>One team follows the human. The other follows the money. The evidence meets in the middle.</p>
         </div>
         <div className="war-room-intro-meta">
+          {onOpenBriefing && (
+            <button
+              type="button"
+              onClick={onOpenBriefing}
+              className="war-briefing-pill-btn"
+              title="Open Incident Mission Briefing"
+            >
+              <Sparkles size={13} />
+              <span>Mission Briefing</span>
+            </button>
+          )}
           <span className="war-room-incident"><strong>{investigation.mode === "replay" ? amountLabel : `${artifacts.length} ${artifacts.length === 1 ? "source" : "sources"}`}</strong><span>{investigation.exploitLabel}</span></span>
         </div>
         <div className="war-room-telemetry-bar" aria-label="Investigation metrics telemetry">
@@ -194,58 +205,24 @@ export function WarRoomLanding({ investigation, headingRef, correlations, artifa
       </section>
 
       <div className="war-room-case-strip" aria-label="Shared investigation summary">
-        <span><Fingerprint size={16} /><strong>{correlations.length}</strong> correlated identities</span>
-        <span><strong>${(totalFrozenUsd / 1_000_000).toFixed(2)}M</strong> frozen</span>
-        <span>One case. Two disciplines. A connected trail.</span>
-        <a href="#case-operations" onClick={(event) => {
-          event.preventDefault();
-          const details = document.getElementById("case-operations") as HTMLDetailsElement | null;
-          if (details) { details.open = true; details.querySelector("summary")?.focus(); details.scrollIntoView({ behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth", block: "start" }); }
-        }}>Case operations <ArrowDown size={13} /></a>
-      </div>
-
-      {/* 3D Micro-Transaction Peel-Chain Splitter Visualizer Module */}
-      <section className="war-room-3d-split-module panel p-4 my-5" aria-label="3D Micro-Transaction Split Simulation">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3.5 pb-3 border-b border-border">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-lg bg-iris/20 text-iris border border-iris/40 flex items-center justify-center shrink-0">
-              <Box size={19} />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h2 className="text-sm font-semibold text-slate-100">
-                  3D Micro-Transaction Fracture Cloud
-                </h2>
-                <span className="text-[10px] font-mono text-emerald-300 bg-emerald-950/80 border border-emerald-700/60 px-1.5 py-0.5 rounded flex items-center gap-1">
-                  <Sparkles size={10} /> WebGL 3D
-                </span>
-              </div>
-              <p className="text-xs text-muted mt-0.5">
-                Simulating the $42.00M capital fracture through 8 automated peel-chain splitter hubs, ZK mixers, and cross-chain bridges.
-              </p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <a
-              href="#/matrix"
-              className="button button-sm button-secondary flex items-center gap-1.5 text-xs px-3 py-1.5"
-            >
-              <span>Explore in Ledger Matrix</span>
-              <ArrowUpRight size={13} />
-            </a>
-          </div>
+        <div className="war-strip-metrics">
+          <span><Fingerprint size={16} /><strong>{correlations.length}</strong> correlated identities</span>
+          <span><strong>${(totalFrozenUsd / 1_000_000).toFixed(2)}M</strong> frozen</span>
+          <span className="war-strip-tagline">One case. Two disciplines. A connected trail.</span>
         </div>
-
-        <SplitTransactionVisualizer3D
-          nodes={nodes}
-          edges={edges}
-          selectedNodeId={selected?.targetWalletId || nodes[0]?.id || ""}
-          onSelectNode={() => {}}
-          frozenWalletIds={[]}
-          onIssueFreeze={() => {}}
-          height={480}
-        />
-      </section>
+        <div className="war-strip-actions">
+          <a href="#/operations" className="war-strip-link war-strip-link-primary" aria-label="Open full case operations dossier">
+            <FileText size={14} />
+            <span>Case operations dossier & AI copilot</span>
+            <ArrowRight size={14} />
+          </a>
+          <a href="#/matrix" className="war-strip-link" aria-label="Explore 3D split fracture in Forensic Matrix">
+            <Activity size={14} />
+            <span>3D Split Fracture (Forensic Matrix)</span>
+            <ArrowUpRight size={14} />
+          </a>
+        </div>
+      </div>
 
 
       <dialog ref={dialogRef} className="war-bridge-dialog" aria-labelledby="war-bridge-dialog-title" onClose={() => setInspecting(false)} onClick={(event) => { if (event.target === event.currentTarget) dialogRef.current?.close(); }}>

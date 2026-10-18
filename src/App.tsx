@@ -13,6 +13,8 @@ import { CaseOverview } from "./components/CaseOverview";
 import { AlertsPanel } from "./components/AlertsPanel";
 import { AnalystCopilot } from "./components/AnalystCopilot";
 import { WarRoomLanding } from "./components/WarRoomLanding";
+import { CaseOperationsView } from "./components/CaseOperationsView";
+import { CaseBriefingIntro } from "./components/CaseBriefingIntro";
 import { InvestigationSelector } from "./components/InvestigationSelector";
 import { createInvestigation, loadInvestigationStore, saveInvestigationStore, type Investigation } from "./investigations";
 import { api } from "./api";
@@ -24,12 +26,14 @@ import {
   ChevronLeft,
   ChevronRight,
   FileCheck2,
+  FileText,
   LayoutDashboard,
   Menu,
   Network,
   Radar,
   Search,
   ShieldAlert,
+  Sparkles,
   X,
 } from "lucide-react";
 
@@ -40,6 +44,12 @@ const workspaces = [
     title: "Home",
     description: "Two investigation teams, connected by evidence.",
     icon: LayoutDashboard,
+  },
+  {
+    id: "operations",
+    title: "Case operations",
+    description: "Incident summary, wallet clusters timeline, and AI Copilot.",
+    icon: FileText,
   },
   {
     id: "matrix",
@@ -70,6 +80,7 @@ const workspaces = [
 type ActiveSection = (typeof workspaces)[number]["id"];
 const readSection = (): ActiveSection => {
   const id = window.location.hash.replace(/^#\/?/, "");
+  if (id === "overview") return "operations";
   return workspaces.find((workspace) => workspace.id === id)?.id ?? "home";
 };
 
@@ -151,15 +162,30 @@ function InvestigationWorkspace({ investigation, investigations, onSelectInvesti
     return () => query.removeEventListener("change", onResize);
   }, []);
 
+  const [briefingOpen, setBriefingOpen] = useState(() => activeSection === "home");
+  const handleCloseBriefing = () => {
+    setBriefingOpen(false);
+  };
+  const handleOpenBriefing = () => {
+    setBriefingOpen(true);
+  };
+
   useEffect(() => {
     const onHashChange = () => {
-      if (/^#\/?(?:overview|home)$/.test(window.location.hash)) window.history.replaceState(null, "", "#/");
+      if (/^#\/?overview$/.test(window.location.hash)) {
+        window.history.replaceState(null, "", "#/operations");
+      } else if (/^#\/?home$/.test(window.location.hash)) {
+        window.history.replaceState(null, "", "#/");
+      }
       setActiveSection(readSection());
       setNavigationOpen(false);
     };
     window.addEventListener("hashchange", onHashChange);
-    if (!window.location.hash || /^#\/?(?:overview|home)$/.test(window.location.hash))
+    if (/^#\/?overview$/.test(window.location.hash)) {
+      window.history.replaceState(null, "", "#/operations");
+    } else if (!window.location.hash || /^#\/?home$/.test(window.location.hash)) {
       window.history.replaceState(null, "", "#/");
+    }
     return () => window.removeEventListener("hashchange", onHashChange);
   }, []);
 
@@ -425,7 +451,7 @@ function InvestigationWorkspace({ investigation, investigations, onSelectInvesti
   const selectorProps = { investigations, activeInvestigationId: investigation.id, onSelect: onSelectInvestigation, onCreate: onCreateInvestigation };
 
   return (
-    <div className={`app-shell${activeSection === "home" ? " is-home" : ""}`}>
+    <div className="app-shell">
       <a
         className="skip-link"
         href="#workspace-title"
@@ -489,6 +515,9 @@ function InvestigationWorkspace({ investigation, investigations, onSelectInvesti
             >
               <Icon size={18} strokeWidth={1.65} />
               <span>{title}</span>
+              {id === "operations" && (
+                <span className="navigation-count">{correlations.length}</span>
+              )}
               {id === "osint" && (
                 <span className="navigation-count">{artifacts.length}</span>
               )}
@@ -581,6 +610,16 @@ function InvestigationWorkspace({ investigation, investigations, onSelectInvesti
             </div>
 
             <InvestigationSelector {...selectorProps} variant="header" />
+            <button
+              type="button"
+              onClick={handleOpenBriefing}
+              className="button button-sm button-secondary"
+              style={{ display: "flex", alignItems: "center", gap: "5px", padding: "4px 10px", fontSize: "11px" }}
+              title="Open Incident Briefing & Dual-Front Architecture"
+            >
+              <Sparkles size={12} className="text-iris" />
+              <span>Briefing</span>
+            </button>
             <span className="live-status">
               <span className="status-dot" />
               Active case
@@ -654,28 +693,26 @@ function InvestigationWorkspace({ investigation, investigations, onSelectInvesti
               nodes={nodes}
               edges={edges}
               totalFrozenUsd={totalFrozenUsd}
+              onOpenBriefing={handleOpenBriefing}
             />
-            <details id="case-operations" className="war-room-archive">
-              <summary>
-                <span>Case operations</span>
-                <span>Incident summary, attribution &amp; analyst copilot</span>
-              </summary>
-              <div className="war-room-existing-layout">
-                {hasLedger && correlations.length > 0 ? <CaseOverview
-                  correlations={correlations}
-                  artifacts={artifacts}
-                  warrants={warrants}
-                  bandwidthSigmaSec={bandwidthSigmaSec}
-                  totalFrozenUsd={totalFrozenUsd}
-                  frozenWalletIds={frozenWalletIds}
-                  onIssueFreeze={handleIssueFreeze}
-                  warRoomKpis={warRoomKpis}
-                /> : <div className="empty-case-summary"><h2>{investigation.title}</h2><p>{investigation.description || "A new investigation, ready for evidence."}</p><dl><div><dt>Case reference</dt><dd>{investigation.reference}</dd></div><div><dt>Indexed sources</dt><dd>{artifacts.length}</dd></div><div><dt>Wallet clusters</dt><dd>{nodes.length}</dd></div></dl><a className="text-link" href="#/osint">Collect OSINT evidence <ArrowUpRight size={14} /></a></div>}
-                {investigation.mode === "replay" ? <AnalystCopilot
-                  suspectId={selectedNodeId}
-                /> : <EmptyWorkspace title="Build the evidence trail" description="Add source material to this investigation. Its evidence and case records stay separate from your other investigations." />}
-              </div>
-            </details>
+          </section>
+          <section
+            hidden={activeSection !== "operations"}
+            aria-label="Case operations"
+          >
+            <CaseOperationsView
+              investigation={investigation}
+              correlations={correlations}
+              artifacts={artifacts}
+              nodes={nodes}
+              warrants={warrants}
+              bandwidthSigmaSec={bandwidthSigmaSec}
+              totalFrozenUsd={totalFrozenUsd}
+              frozenWalletIds={frozenWalletIds}
+              onIssueFreeze={handleIssueFreeze}
+              warRoomKpis={warRoomKpis}
+              selectedNodeId={selectedNodeId}
+            />
           </section>
           <section
             hidden={activeSection !== "matrix"}
@@ -761,6 +798,21 @@ function InvestigationWorkspace({ investigation, investigations, onSelectInvesti
           </footer>
         </main>
       </div>
+
+      <CaseBriefingIntro
+        investigation={investigation}
+        correlations={correlations}
+        nodes={nodes}
+        artifacts={artifacts}
+        totalFrozenUsd={totalFrozenUsd}
+        isOpen={briefingOpen}
+        onEnterWarRoom={handleCloseBriefing}
+        onOpenOperations={() => {
+          handleCloseBriefing();
+          window.location.hash = "#/operations";
+        }}
+        onClose={handleCloseBriefing}
+      />
     </div>
   );
 }
