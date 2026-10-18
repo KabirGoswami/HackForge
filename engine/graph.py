@@ -14,10 +14,11 @@ from config import (
 )
 
 class LedgerGraph:
-    def __init__(self, tx_path: str):
-        self.df = pd.read_csv(tx_path)
+    def __init__(self, df: pd.DataFrame):
+        self.df = df
         self.graph = nx.DiGraph()
         self._build_graph()
+
 
     def _build_graph(self):
         """Builds the directed graph from transaction data."""
@@ -128,8 +129,8 @@ class LedgerGraph:
                     queue.append(successor)
         return tainted
 
-def run_graph_analysis(tx_path: str, output_path: str):
-    lg = LedgerGraph(tx_path)
+def run_graph_analysis(df_tx: pd.DataFrame, output_path: Optional[str] = None):
+    lg = LedgerGraph(df_tx)
 
     drain = lg.detect_drain_wallet()
     hubs = lg.detect_hubs(drain)
@@ -151,7 +152,8 @@ def run_graph_analysis(tx_path: str, output_path: str):
         "bridge_links": bridges
     }
 
-    with open(output_path, "w") as f:
-        json.dump(results, f, indent=2)
+    if output_path:
+        with open(output_path, "w") as f:
+            json.dump(results, f, indent=2)
 
     return results

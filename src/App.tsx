@@ -14,6 +14,7 @@ import { AlertsPanel } from "./components/AlertsPanel";
 import { AnalystCopilot } from "./components/AnalystCopilot";
 import { WarRoomLanding } from "./components/WarRoomLanding";
 import { InvestigationSelector } from "./components/InvestigationSelector";
+import { AnalysisControlPanel } from "./components/AnalysisControlPanel";
 import { createInvestigation, loadInvestigationStore, saveInvestigationStore, type Investigation } from "./investigations";
 import {
   Activity,
@@ -29,6 +30,7 @@ import {
   ShieldAlert,
   X,
 } from "lucide-react";
+
 
 const workspaces = [
   {
@@ -559,6 +561,7 @@ function InvestigationWorkspace({ investigation, investigations, onSelectInvesti
             hidden={activeSection !== "home"}
             aria-label="War room"
           >
+            <AnalysisControlPanel />
             <WarRoomLanding
               investigation={investigation}
               headingRef={activeSection === "home" ? titleRef : undefined}
@@ -569,6 +572,7 @@ function InvestigationWorkspace({ investigation, investigations, onSelectInvesti
               totalFrozenUsd={totalFrozenUsd}
             />
             <details id="case-operations" className="war-room-archive">
+
               <summary>
                 <span>Case operations</span>
                 <span>Incident summary, attribution &amp; analyst copilot</span>

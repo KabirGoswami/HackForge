@@ -1,6 +1,0 @@
-{
-  "name": "Quantitative OSINT Blockchain Engine",
-  "description": "Mathematical forensic engine fusing unstructured OSINT threat intelligence with multi-dimensional blockchain transaction matrices, time-delta latency modeling, and graph clustering to attribute anonymous exploit wallets.",
-  "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
-}
