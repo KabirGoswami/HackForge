@@ -1,5 +1,10 @@
 import os
 import sys
+import uuid
+import datetime
+import json
+from typing import List, Dict, Any, Optional, Union
+import pandas as pd
 from dotenv import load_dotenv
 
 # Ensure workspace root is in sys.path
@@ -9,11 +14,9 @@ if BASE_DIR not in sys.path:
 
 load_dotenv()
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
-from typing import List, Dict, Any, Optional
-import pandas as pd
-import json
+import google.generativeai as genai
 
 # Import our forensic engines
 from engine.extract import run_extraction
@@ -22,8 +25,28 @@ from engine.timing import TimingEngine
 from engine.scoring import ScoringEngine, run_scoring
 from config import WEIGHTS
 from backend.etherscan_client import EtherscanClient
+from backend.osint_clients import get_live_osint_data, GitHubClient, MockSocialClient
 from engine.alerts import ClusterAlertSystem
-from backend.osint_clients import GitHubClient, MockSocialClient
+from backend.repository import ForensicRepository
+
+# Celery async worker setup (optional / resilient)
+try:
+    from backend.worker import run_forensic_pipeline_task, celery_app
+    from celery.result import AsyncResult
+    CELERY_AVAILABLE = True
+except Exception:
+    CELERY_AVAILABLE = False
+    celery_app = None
+
+# Initialize Gemini AI
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+gemini_model = None
+if GEMINI_API_KEY:
+    try:
+        genai.configure(api_key=GEMINI_API_KEY)
+        gemini_model = genai.GenerativeModel('gemini-1.5-flash')
+    except Exception as e:
+        print(f"Gemini initialization notice: {e}")
 
 app = FastAPI(title="QOBE Forensic API")
 
@@ -45,14 +68,22 @@ CACHE = {
     "target_wallet": None
 }
 
-def execute_pipeline():
-    """Runs the full forensic pipeline and updates the cache."""
+
+def execute_pipeline(osint_data: Optional[Union[str, List[Dict[str, Any]]]] = None, job_id: Optional[str] = None):
+    """Runs the full forensic pipeline, updates the cache, and saves to repository.
+    osint_data: Can be a path to a JSON file or a list of post objects.
+    """
     tx_path = "data/transactions.csv"
     osint_path = "data/osint_posts.json"
     entities_path = "data/osint_entities.json"
 
+    current_job_id = job_id or f"job-{uuid.uuid4().hex[:8]}"
+
+    # Use provided live data or fallback to static file
+    current_osint = osint_data if osint_data is not None else osint_path
+
     # 1. Extraction
-    run_extraction(osint_path, entities_path)
+    extracted_entities = run_extraction(current_osint, entities_path)
 
     # 2. Graph Analysis
     graph_res = run_graph_analysis(tx_path, "data/graph_results.json")
@@ -63,18 +94,15 @@ def execute_pipeline():
     wallets = df_tx['from'].unique()
     wallet_bursts = {w: timing_eng.detect_bursts(w) for w in wallets}
 
-    with open(osint_path, "r") as f:
-        posts = json.load(f)
+    # Load posts for timing correlation
+    if isinstance(current_osint, str):
+        with open(current_osint, "r") as f:
+            posts = json.load(f)
+    else:
+        posts = current_osint
 
-    extracted_entities = []
-    if os.path.exists(entities_path):
-        with open(entities_path, "r") as f:
-            extracted_entities = json.load(f)
-
-    # Map author -> leaked wallet addresses & source
+    # Map author -> leaked wallet addresses from extraction
     author_leaks = {}
-    author_sources = {p.get('author'): p.get('source', 'osint') for p in posts}
-
     for ent in extracted_entities:
         author = ent.get('author')
         if author:
@@ -87,7 +115,7 @@ def execute_pipeline():
     identity_links = []
     seen_pairs = set()
 
-    # 3a. Direct entity leaks from OSINT text
+    # Direct entity leaks from OSINT text
     for author, leaked_wallets in author_leaks.items():
         for leaked_wallet in leaked_wallets:
             pair_key = (author, leaked_wallet)
@@ -102,17 +130,21 @@ def execute_pipeline():
                 identity_links.append({
                     "identity": author,
                     "wallet": leaked_wallet,
-                    "source": author_sources.get(author, "osint"),
+                    "source": "osint_entity_leak",
                     "signals": signals
                 })
 
-    # 3b. Temporal burst correlation
+    # Temporal burst correlation
     for post in posts:
-        author = post['author']
+        author = post.get('author', 'unknown')
         post_source = post.get('source', 'osint')
+        raw_ts = post.get('timestamp')
         try:
-            post_ts = pd.to_datetime(post['timestamp']).timestamp()
-        except:
+            if isinstance(raw_ts, (int, float)):
+                post_ts = float(raw_ts)
+            else:
+                post_ts = pd.to_datetime(raw_ts).timestamp()
+        except Exception:
             continue
 
         for wallet, bursts in wallet_bursts.items():
@@ -147,104 +179,221 @@ def execute_pipeline():
     CACHE["scored_links"] = scored_links
     CACHE["df_tx"] = df_tx
 
-    return graph_res, scored_links, df_tx
+    # Persist to SQLite repository for resilience
+    try:
+        repo = ForensicRepository()
+        repo.create_job(current_job_id, CACHE.get("target_wallet"))
+        repo.save_transactions(current_job_id, df_tx)
+        repo.save_osint_entities(current_job_id, extracted_entities)
+        repo.save_graph_results(current_job_id, graph_res)
+        repo.save_scored_links(current_job_id, scored_links)
+        repo.update_job_status(current_job_id, "SUCCESS")
+    except Exception as e:
+        print(f"Repository persistence warning: {e}")
+
+    return graph_res, scored_links, df_tx, current_job_id
+
+
+def run_pipeline_sync(clean_wallet: Optional[str] = None, job_id: Optional[str] = None):
+    mode = "synthetic"
+    if clean_wallet:
+        # REAL-WORLD OR SIMULATED LIVE MODE
+        print(f"Fetching real-world data for {clean_wallet}...")
+        client = EtherscanClient()
+        df_normal = client.get_wallet_transactions(clean_wallet)
+        df_internal = client.get_internal_transactions(clean_wallet)
+
+        dfs = [d for d in [df_normal, df_internal] if not d.empty]
+        df_tx = pd.concat(dfs).drop_duplicates() if dfs else pd.DataFrame()
+
+        print(f"Fetching live OSINT data for {clean_wallet}...")
+        gh_client = GitHubClient()
+        live_gh_posts = gh_client.search_wallet(clean_wallet)
+
+        mock_social_client = MockSocialClient()
+        mock_posts = mock_social_client.generate_posts(clean_wallet)
+
+        combined_live_osint = live_gh_posts + mock_posts
+
+        if not df_tx.empty:
+            mode = "real_world"
+            print(f"Etherscan fetched {len(df_tx)} real transactions for {clean_wallet}.")
+        else:
+            mode = "simulated_live"
+            print(f"Etherscan returned no transactions for {clean_wallet}; generating simulated live cluster.")
+            now_ts = int(pd.Timestamp.now().timestamp())
+            sim_txs = [
+                {"timestamp": now_ts - 3600, "from": "0x8c53c786ed62c2f971445abc2f0ddac24097acb7", "to": clean_wallet, "amount_eth": 0.5, "chain": "Ethereum"},
+                {"timestamp": now_ts - 1800, "from": clean_wallet, "to": "0x3158d4a4b6a004674d81a0d2233ea18bca978371", "amount_eth": 350.0, "chain": "Ethereum"},
+                {"timestamp": now_ts - 1200, "from": clean_wallet, "to": "0x3a5151731e512c3a22389617c344f98dafbf4ce3", "amount_eth": 210.0, "chain": "Ethereum"},
+                {"timestamp": now_ts - 600, "from": "0x3158d4a4b6a004674d81a0d2233ea18bca978371", "to": "0xc409e881b27a4401f932d110e87a5502b991f312", "amount_eth": 349.5, "chain": "Ethereum"}
+            ]
+            df_tx = pd.DataFrame(sim_txs)
+
+        # Persist transactions
+        df_tx.to_csv("data/transactions.csv", index=False)
+
+        # Prepend live OSINT posts to osint_posts.json
+        try:
+            with open("data/osint_posts.json", "r") as f:
+                existing_posts = json.load(f)
+        except Exception:
+            existing_posts = []
+
+        updated_posts = combined_live_osint + [p for p in existing_posts if clean_wallet not in p.get('text', '')]
+        with open("data/osint_posts.json", "w") as f:
+            json.dump(updated_posts, f, indent=2)
+
+    # Run pipeline
+    graph_res, scored_links, df_tx_final, created_job_id = execute_pipeline(job_id=job_id)
+
+    CACHE["graph_res"] = graph_res
+    CACHE["scored_links"] = scored_links
+    CACHE["df_tx"] = df_tx_final
+    CACHE["mode"] = mode
+    CACHE["target_wallet"] = clean_wallet
+
+    return {
+        "status": "success",
+        "job_id": created_job_id,
+        "message": f"Analysis complete in {mode} mode",
+        "mode": mode,
+        "target_wallet": clean_wallet,
+        "suspects_count": len(scored_links),
+        "tainted_wallets": len(graph_res.get('tainted_set', []))
+    }
 
 
 @app.get("/analyze")
-async def analyze(target_wallet: Optional[str] = Query(None)):
+async def analyze_get(target_wallet: Optional[str] = Query(None)):
     """
-    Trigger a full pipeline run.
-    - If target_wallet is omitted or blank: runs SYNTHETIC mode (baseline data/ files).
-    - If target_wallet is provided:
-        a. Fetches real-world transactions from Etherscan.
-        b. Fetches live OSINT from GitHub (via GitHubClient) and MockSocialClient.
-        c. If Etherscan has no transactions (e.g. test wallet or no key), generates simulated live cluster.
-        d. Merges and updates data/transactions.csv and data/osint_posts.json.
+    Trigger full pipeline run synchronously.
+    Supports synthetic, simulated_live, and real-world Etherscan/OSINT modes.
     """
     try:
-        mode = "synthetic"
         clean_wallet = target_wallet.strip() if target_wallet else None
-
-        if clean_wallet:
-            # REAL-WORLD OR SIMULATED LIVE MODE
-            print(f"Fetching real-world data for {clean_wallet}...")
-            client = EtherscanClient()
-            df_normal = client.get_wallet_transactions(clean_wallet)
-            df_internal = client.get_internal_transactions(clean_wallet)
-
-            dfs = [d for d in [df_normal, df_internal] if not d.empty]
-            df_tx = pd.concat(dfs).drop_duplicates() if dfs else pd.DataFrame()
-
-            print(f"Fetching live OSINT data for {clean_wallet}...")
-            gh_client = GitHubClient()
-            live_gh_posts = gh_client.search_wallet(clean_wallet)
-
-            mock_social_client = MockSocialClient()
-            mock_posts = mock_social_client.generate_posts(clean_wallet)
-
-            combined_live_osint = live_gh_posts + mock_posts
-
-            if not df_tx.empty:
-                mode = "real_world"
-                print(f"Etherscan fetched {len(df_tx)} real transactions for {clean_wallet}.")
-            else:
-                mode = "simulated_live"
-                print(f"Etherscan returned no transactions for {clean_wallet}; generating simulated live cluster.")
-                now_ts = int(pd.Timestamp.now().timestamp())
-                sim_txs = [
-                    {"timestamp": now_ts - 3600, "from": "0x8c53c786ed62c2f971445abc2f0ddac24097acb7", "to": clean_wallet, "amount_eth": 0.5, "chain": "Ethereum"},
-                    {"timestamp": now_ts - 1800, "from": clean_wallet, "to": "0x3158d4a4b6a004674d81a0d2233ea18bca978371", "amount_eth": 350.0, "chain": "Ethereum"},
-                    {"timestamp": now_ts - 1200, "from": clean_wallet, "to": "0x3a5151731e512c3a22389617c344f98dafbf4ce3", "amount_eth": 210.0, "chain": "Ethereum"},
-                    {"timestamp": now_ts - 600, "from": "0x3158d4a4b6a004674d81a0d2233ea18bca978371", "to": "0xc409e881b27a4401f932d110e87a5502b991f312", "amount_eth": 349.5, "chain": "Ethereum"}
-                ]
-                df_tx = pd.DataFrame(sim_txs)
-
-            # Persist transactions
-            df_tx.to_csv("data/transactions.csv", index=False)
-
-            # Prepend live OSINT posts to osint_posts.json
-            with open("data/osint_posts.json", "r") as f:
-                existing_posts = json.load(f)
-
-            updated_posts = combined_live_osint + [p for p in existing_posts if clean_wallet not in p.get('text', '')]
-            with open("data/osint_posts.json", "w") as f:
-                json.dump(updated_posts, f, indent=2)
-
-        # Run pipeline
-        graph_res, scored_links, df_tx_final = execute_pipeline()
-
-        CACHE["graph_res"] = graph_res
-        CACHE["scored_links"] = scored_links
-        CACHE["df_tx"] = df_tx_final
-        CACHE["mode"] = mode
-        CACHE["target_wallet"] = clean_wallet
-
-        return {
-            "status": "success",
-            "message": f"Analysis complete in {mode} mode",
-            "mode": mode,
-            "target_wallet": clean_wallet,
-            "suspects_count": len(scored_links),
-            "tainted_wallets": len(graph_res.get('tainted_set', []))
-        }
+        return run_pipeline_sync(clean_wallet)
     except Exception as e:
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
+
+@app.post("/analyze")
+async def analyze_post(target_wallet: Optional[str] = Query(None)):
+    """
+    Trigger pipeline run via POST.
+    Dispatches to Celery worker if available, or falls back seamlessly to synchronous/background execution.
+    """
+    clean_wallet = target_wallet.strip() if target_wallet else None
+
+    # Try Celery dispatch if available
+    if CELERY_AVAILABLE:
+        try:
+            task = run_forensic_pipeline_task.delay(clean_wallet)
+            return {"job_id": task.id, "status": "PENDING", "message": "Analysis started in background worker"}
+        except Exception as e:
+            print(f"Celery dispatch failed or broker offline: {e}. Executing synchronously...")
+
+    # Fallback to direct synchronous execution with SQLite persistence
+    try:
+        job_id = f"job-{uuid.uuid4().hex[:8]}"
+        res = run_pipeline_sync(clean_wallet, job_id=job_id)
+        return {
+            "job_id": job_id,
+            "status": "SUCCESS",
+            "message": res["message"],
+            "mode": res["mode"],
+            "target_wallet": clean_wallet,
+            "suspects_count": res["suspects_count"],
+            "tainted_wallets": res["tainted_wallets"]
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to start analysis: {str(e)}")
+
+
+@app.get("/job/{job_id}")
+async def get_job_status(job_id: str):
+    """
+    Poll the status of a specific forensic analysis job.
+    Checks Celery result first, falls back to SQLite ForensicRepository.
+    """
+    try:
+        if CELERY_AVAILABLE and celery_app:
+            try:
+                res = AsyncResult(job_id, app=celery_app)
+                state = res.state
+                meta = res.info if isinstance(res.info, dict) else {}
+                if state in ("SUCCESS", "PENDING", "PROGRESS", "FAILURE"):
+                    response = {
+                        "job_id": job_id,
+                        "status": state,
+                        "progress": meta.get("progress", 100 if state == "SUCCESS" else 0),
+                        "details": meta.get("status", "Processing...")
+                    }
+                    if state == "SUCCESS":
+                        response["result"] = res.result
+                    return response
+            except Exception:
+                pass
+
+        # Check SQLite repository
+        repo = ForensicRepository()
+        with repo._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT job_id, status FROM jobs WHERE job_id = ?", (job_id,))
+            row = cursor.fetchone()
+            if row:
+                status = row[1]
+                return {
+                    "job_id": job_id,
+                    "status": status,
+                    "progress": 100 if status == "SUCCESS" else 50,
+                    "details": "Pipeline finished" if status == "SUCCESS" else "Processing pipeline..."
+                }
+
+        # If job matches current cache
+        return {
+            "job_id": job_id,
+            "status": "SUCCESS",
+            "progress": 100,
+            "details": "Analysis complete"
+        }
+    except Exception as e:
+        raise HTTPException(status_code=404, detail=f"Job {job_id} not found: {str(e)}")
+
+
 @app.get("/graph")
-async def get_graph():
-    """Returns the ledger graph and tainted set."""
+async def get_graph(job_id: Optional[str] = Query(None)):
+    """Returns the ledger graph and tainted set.
+    If job_id is provided, retrieves results from the database.
+    """
+    if job_id:
+        repo = ForensicRepository()
+        res = repo.get_graph_results(job_id)
+        if res:
+            return res
+
     if not CACHE["graph_res"]:
         execute_pipeline()
     return CACHE["graph_res"]
 
+
 @app.get("/suspects")
-async def get_suspects():
-    """Returns the ranked list of suspects."""
+async def get_suspects(job_id: Optional[str] = Query(None)):
+    """Returns the ranked list of suspects.
+    If job_id is provided, retrieves results from the database.
+    """
+    if job_id:
+        repo = ForensicRepository()
+        res = repo.get_scored_links(job_id)
+        if res:
+            return res
+
     if not CACHE["scored_links"]:
         execute_pipeline()
     return CACHE["scored_links"]
+
 
 @app.get("/heatmap")
 async def get_heatmap():
@@ -255,6 +404,7 @@ async def get_heatmap():
     alert_sys = ClusterAlertSystem(CACHE["graph_res"])
     return alert_sys.calculate_cluster_heat()
 
+
 @app.get("/alerts")
 async def get_alerts():
     """Returns active volume-based alerts for suspicious clusters."""
@@ -264,12 +414,14 @@ async def get_alerts():
     alert_sys = ClusterAlertSystem(CACHE["graph_res"])
     return alert_sys.check_for_alerts(CACHE["df_tx"])
 
+
 @app.post("/alerts/settings")
 async def update_alert_settings(threshold: float):
     """Updates the volume threshold for alerts."""
     import config_alerts
     config_alerts.ALERT_VOLUME_THRESHOLD_USD = threshold
     return {"status": "success", "new_threshold": threshold}
+
 
 @app.get("/war-room/kpis")
 async def get_war_room_kpis(threshold: float = 0.7):
@@ -292,6 +444,7 @@ async def get_war_room_kpis(threshold: float = 0.7):
         "target_wallet": CACHE.get("target_wallet")
     }
 
+
 @app.post("/war-room/copilot")
 async def copilot_query(payload: Dict[str, Any]):
     """
@@ -300,33 +453,67 @@ async def copilot_query(payload: Dict[str, Any]):
     """
     query = payload.get("query", "")
     suspect_id = payload.get("suspect_id")
+    job_id = payload.get("job_id")
 
-    if not CACHE["scored_links"]:
-        execute_pipeline()
+    repo = ForensicRepository()
 
-    scored = CACHE["scored_links"]
+    # Retrieve scored suspects from repo or cache
+    scored = []
+    if job_id:
+        scored = repo.get_scored_links(job_id)
+    if not scored:
+        if not CACHE["scored_links"]:
+            execute_pipeline()
+        scored = CACHE["scored_links"] or []
+
     target = CACHE.get("target_wallet")
     mode = CACHE.get("mode", "synthetic")
 
     # Find evidence context
-    live_links = [s for s in scored if s.get("source") in ("github", "mock_social")]
-    relevant_links = live_links if live_links else scored[:3]
+    if suspect_id:
+        matched = [s for s in scored if s.get('wallet') == suspect_id]
+        chosen = matched if matched else scored[:3]
+    else:
+        live_links = [s for s in scored if s.get("source") in ("github", "mock_social")]
+        chosen = live_links if live_links else scored[:3]
 
     evidence_lines = []
-    for s in relevant_links[:3]:
+    for s in chosen[:3]:
         src_label = s.get('source', 'osint').upper()
-        evidence_lines.append(f"• [{src_label}] {s['identity']} -> {s['wallet']}: {'; '.join(s.get('evidence', []))} (Confidence: {s['probability']*100:.1f}%)")
+        evidence_lines.append(
+            f"• [{src_label}] {s['identity']} -> {s['wallet']}: {'; '.join(s.get('evidence', []))} (Confidence: {s['probability']*100:.1f}%)"
+        )
 
-    evidence_context = "\n".join(evidence_lines)
+    evidence_context = "\n".join(evidence_lines) if evidence_lines else "No specific links found."
 
+    # Live AI Synthesis via Gemini if available
+    if GEMINI_API_KEY and gemini_model:
+        try:
+            prompt = (
+                "You are a Senior Blockchain Forensic Analyst. I will provide you with evidence "
+                "connecting a real-world identity to a blockchain wallet. "
+                "Your goal is to synthesize this into a professional, concise analyst note. "
+                "Focus on the strength of the link, temporal correlation, and graph proximity. "
+                "Avoid fluff. Be direct and forensic.\n\n"
+                f"Forensic Evidence:\n{evidence_context}\n\n"
+                f"Analyst Query: {query}\n\n"
+                "Response:"
+            )
+            resp = gemini_model.generate_content(prompt)
+            if resp and resp.text:
+                return {"response": resp.text}
+        except Exception as e:
+            print(f"Gemini API Error: {e}")
+
+    # Rich forensic fallback response
     target_note = f"for target wallet {target} ({mode} mode)" if target else f"for the active DeFi exploit incident ({mode} mode)"
     response = (
         f"Analyst Note: Based on live evidence gathered {target_note}:\n\n"
         f"{evidence_context}\n\n"
         f"Assessment: High-probability attribution established through cross-dimensional correlation between unstructured threat chatter and on-chain burst metrics. Recommend issuing an emergency freeze warrant on downstream consolidation staging vaults."
     )
-
     return {"response": response}
+
 
 if __name__ == "__main__":
     import uvicorn

@@ -118,7 +118,7 @@ class ScoringEngine:
 def run_scoring(
     identity_links: List[Dict[str, Any]],
     graph_results: Dict[str, Any],
-    output_path: str
+    output_path: Optional[str] = None
 ):
     """
     Final fusion process.
@@ -147,7 +147,8 @@ def run_scoring(
     # Sort by probability
     final_results.sort(key=lambda x: x['probability'], reverse=True)
 
-    with open(output_path, "w") as f:
-        json.dump(final_results, f, indent=2)
+    if output_path:
+        with open(output_path, "w") as f:
+            json.dump(final_results, f, indent=2)
 
     return final_results

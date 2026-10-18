@@ -1,7 +1,8 @@
 import re
 import json
 import os
-from typing import List, Dict, Any, Optional
+import time
+from typing import List, Dict, Any, Optional, Union
 import anthropic
 from config import WALLET_REGEX, EMAIL_REGEX, IPV4_REGEX, HANDLE_REGEX, MODEL_NAME, LLM_CACHE_DIR
 
@@ -65,8 +66,11 @@ class OsintExtractor:
 
     def extract(self, post: Dict[str, Any]) -> Dict[str, Any]:
         """Main entry point for extracting entities from a post."""
-        text = post.get("text", "")
+        text = post.get("text", "") or post.get("rawText", "")
         post_id = post.get("id", "unknown")
+        if post_id == "unknown" and "author" in post:
+            post_id = f"{post['author']}_{int(time.time())}"
+
 
         # 1. Always do regex pass
         entities_regex = self.regex_extract(text)
@@ -96,20 +100,27 @@ class OsintExtractor:
             "summary": llm_data.get("summary", "") if llm_data else ""
         }
 
-def run_extraction(posts_path: str, output_path: str, api_key: Optional[str] = None):
-    """Processes all posts and saves extracted entities."""
-    with open(posts_path, "r") as f:
-        posts = json.load(f)
+def run_extraction(posts: Union[str, List[Dict[str, Any]]], output_path: Optional[str] = None, api_key: Optional[str] = None):
+    """Processes all posts and returns extracted entities.
+    Accepts either a path to a JSON file or a list of post dictionaries.
+    """
+    if isinstance(posts, str):
+        with open(posts, "r") as f:
+            posts_data = json.load(f)
+    else:
+        posts_data = posts
 
     # Add IDs to posts if they don't have them
-    for i, post in enumerate(posts):
+    for i, post in enumerate(posts_data):
         if "id" not in post:
             post["id"] = f"post_{i}"
 
     extractor = OsintExtractor(api_key=api_key)
-    results = [extractor.extract(post) for post in posts]
+    results = [extractor.extract(post) for post in posts_data]
 
-    with open(output_path, "w") as f:
-        json.dump(results, f, indent=2)
+    # Optional fallback for legacy support
+    if output_path:
+        with open(output_path, "w") as f:
+            json.dump(results, f, indent=2)
 
     return results

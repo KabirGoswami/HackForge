@@ -16,6 +16,7 @@ import { WarRoomLanding } from "./components/WarRoomLanding";
 import { CaseOperationsView } from "./components/CaseOperationsView";
 import { CaseBriefingIntro } from "./components/CaseBriefingIntro";
 import { InvestigationSelector } from "./components/InvestigationSelector";
+import { AnalysisControlPanel } from "./components/AnalysisControlPanel";
 import { createInvestigation, loadInvestigationStore, saveInvestigationStore, type Investigation } from "./investigations";
 import { api } from "./api";
 import {
@@ -685,6 +686,7 @@ function InvestigationWorkspace({ investigation, investigations, onSelectInvesti
             hidden={activeSection !== "home"}
             aria-label="War room"
           >
+            <AnalysisControlPanel />
             <WarRoomLanding
               investigation={investigation}
               headingRef={activeSection === "home" ? titleRef : undefined}
@@ -713,6 +715,7 @@ function InvestigationWorkspace({ investigation, investigations, onSelectInvesti
               warRoomKpis={warRoomKpis}
               selectedNodeId={selectedNodeId}
             />
+
           </section>
           <section
             hidden={activeSection !== "matrix"}
